@@ -5,6 +5,8 @@ import { getHistory, sendMsg } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
+import { useRouter } from 'vue-router'
+const router = useRouter()
 const props = defineProps(['username'])
 const ws = useWebSocket(handleMessage)
 const input = ref(null)
@@ -16,21 +18,23 @@ const state = reactive({
   msg: '',
   msgList: [],
 })
+let name = ''
 const scrollToBottom = () => {
   scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
 }
 onBeforeMount(async () => {
+  name = router.currentRoute.value.query.name
   username = localStorage.getItem('username')
   if (!username) {
     router.push('/login')
     return
   }
-  try {
-    let res = await getHistory()
-    state.msgList = res.data.result
-  } catch (e) {
-    console.log(e)
-  }
+  // try {
+  //   let res = await getHistory()
+  //   state.msgList = res.data.result
+  // } catch (e) {
+  //   console.log(e)
+  // }
   setTimeout(() => {
     scrollToBottom()
   }, 0)
@@ -46,7 +50,7 @@ const handleSendBtnClick = async () => {
     return
   }
   try {
-    let res = await sendMsg({ user: username, msg: state.msg })
+    // let res = await sendMsg({ user: username, msg: state.msg })
 
     // ul.value.scrollTop = ul.value.scrollHeight
     if (res.data.code == 200) {
@@ -85,7 +89,7 @@ const insertText = (item) => {
 <template>
   <el-container>
     <el-header class="header">
-      <p>在线聊天室</p>
+      <p>{{ name }}</p>
     </el-header>
     <el-main class="main">
       <el-scrollbar ref="scrollbarRef">

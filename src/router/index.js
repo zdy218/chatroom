@@ -13,9 +13,9 @@ const router = createRouter({
           name: 'home',
           component: () => import('../components/ChatBox.vue'),
         }, {
-          path: 'home/1',
-          name: '1',
-          component: () => import('../components/1.vue'),
+          path: 'home/singal',
+          name: 'singal',
+          component: () => import('../components/SingalBox.vue'),
         }
       ]
     },

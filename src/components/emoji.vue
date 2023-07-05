@@ -18,12 +18,14 @@ const handleEmit = (item) => {
 
 <template>
   <div class="container">
-    <p>表情</p>
-    <div>
-      <span v-for="item in emojis" :key="item" @click="handleEmit(item)">
-        {{ item }}</span
-      >
-    </div>
+    <el-scrollbar>
+      <p>表情</p>
+      <div>
+        <span v-for="item in emojis" :key="item" @click="handleEmit(item)">
+          {{ item }}</span
+        >
+      </div>
+    </el-scrollbar>
   </div>
 </template>
 <style lang="scss" scoped>
@@ -31,15 +33,23 @@ const handleEmit = (item) => {
   position: absolute;
   background-color: white;
   border-radius: 5px;
+  box-shadow: 0 0 10px gray;
+  top: 50px;
+  left: -100px;
   width: 300px;
-  overflow: scroll;
+  overflow-x: hidden;
+  p {
+    margin: 5px;
+  }
   div {
     display: flex;
     flex-wrap: wrap;
     height: 300px;
+    align-items: center;
     span {
       height: 30px;
-      font-size: 24px;
+      width: 30px;
+      font-size: 20px;
       margin: 8px 10px;
       &:hover {
         cursor: pointer;
