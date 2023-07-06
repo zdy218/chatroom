@@ -1,21 +1,22 @@
 <script setup>
 import { reactive, onBeforeMount, ref, onMounted } from 'vue'
-import { useWebSocket } from '../hooks'
+import { useScoketIo } from '../hooks'
 import { getHistory, sendMsg } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
 const props = defineProps(['username'])
-const ws = useWebSocket(handleMessage)
 const input = ref(null)
 const scrollbarRef = ref(null)
 const ul = ref(null)
 let username = ''
 let isshow = ref(false)
+const socket = useScoketIo()
 const state = reactive({
   msg: '',
   msgList: [],
 })
+//滚动到底部
 const scrollToBottom = () => {
   scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
 }
@@ -26,6 +27,7 @@ onBeforeMount(async () => {
     return
   }
   try {
+    //获取聊天室历史记录
     let res = await getHistory()
     state.msgList = res.data.result
   } catch (e) {
@@ -36,21 +38,31 @@ onBeforeMount(async () => {
   }, 0)
 })
 
-const emojiRegex = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g // Emoji 正则表达式
+//将表情转换未16进制
+const emojiRegex = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g
 
+//接收聊天室的信息
+socket.on('$chat', (msg) => {
+  const _msgData = JSON.parse(msg)
+  state.msgList.push(_msgData)
+  setTimeout(() => {
+    scrollToBottom()
+  }, 1)
+})
+
+//点击发送发送聊天
 const handleSendBtnClick = async () => {
   const _msg = state.msg
-
   if (!_msg.trim().length) {
     ElMessage.error('消息内容不能为空!')
     return
   }
   try {
+    //聊天内容存储到数据库后，再进行广播
     let res = await sendMsg({ user: username, msg: state.msg })
-
-    // ul.value.scrollTop = ul.value.scrollHeight
     if (res.data.code == 200) {
-      ws.send(
+      socket.emit(
+        'chat message',
         JSON.stringify({
           id: new Date().getTime(),
           user: username,
@@ -59,25 +71,17 @@ const handleSendBtnClick = async () => {
         })
       )
       state.msg = ''
-      console.log(ul)
-      setTimeout(() => {
-        scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
-      }, 1)
     }
   } catch (e) {
     console.log(e)
     ElMessage.error('发送失败!')
   }
 }
-
-function handleMessage(e) {
-  const _msgData = JSON.parse(e.data)
-  state.msgList.push(_msgData)
-}
+// 将 Emoji 替换为指定的文本
 const insertText = (item) => {
   isshow.value = false
   input.value.value = input.value.value + item
-  const textWithEmojis = input.value.value.replace(emojiRegex, item) // 将 Emoji 替换为指定的文本
+  const textWithEmojis = input.value.value.replace(emojiRegex, item)
   state.msg = textWithEmojis
 }
 </script>

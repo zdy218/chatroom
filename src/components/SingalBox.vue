@@ -1,19 +1,24 @@
 <script setup>
 import { reactive, onBeforeMount, ref, onMounted } from 'vue'
-import { useWebSocket } from '../hooks'
+import { useScoketIo } from '../hooks'
 import { getHistory, sendMsg } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
 import { useRouter } from 'vue-router'
+
 const router = useRouter()
 const props = defineProps(['username'])
-const ws = useWebSocket(handleMessage)
+// const ws = useWebSocket(handleMessage)
 const input = ref(null)
 const scrollbarRef = ref(null)
 const ul = ref(null)
 let username = ''
 let isshow = ref(false)
+const socket = useScoketIo()
+// 处理连接成功事件
+socket.emit('$test', 'Hello server!')
+
 const state = reactive({
   msg: '',
   msgList: [],

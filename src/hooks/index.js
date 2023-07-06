@@ -1,6 +1,6 @@
-import useWebSocket from './websocket';
-
+import useWebSocket from './websocket'
+import useScoketIo from './socketio'
 export {
-  useWebSocket
+  useWebSocket, useScoketIo
 }
 
