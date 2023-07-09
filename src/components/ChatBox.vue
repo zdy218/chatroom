@@ -5,20 +5,22 @@ import { getHistory, sendMsg } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
-const props = defineProps(['username'])
 const input = ref(null)
 const scrollbarRef = ref(null)
 const ul = ref(null)
 let username = ''
 let isshow = ref(false)
 const socket = useScoketIo()
+const emits = defineEmits(['addChat'])
 const state = reactive({
   msg: '',
   msgList: [],
 })
 //滚动到底部
 const scrollToBottom = () => {
-  scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
+  if (scrollbarRef.value) {
+    scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
+  }
 }
 onBeforeMount(async () => {
   username = localStorage.getItem('username')
@@ -71,6 +73,7 @@ const handleSendBtnClick = async () => {
         })
       )
       state.msg = ''
+      emits('addChat')
     }
   } catch (e) {
     console.log(e)

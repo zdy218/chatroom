@@ -1,51 +1,61 @@
 <script setup>
-import { reactive, onBeforeMount, ref, onMounted } from 'vue'
+import { reactive, onBeforeMount, ref, onMounted, toRef, watch } from 'vue'
 import { useScoketIo } from '../hooks'
-import { getHistory, sendMsg } from '../utils/'
+import { getSingalHistory, sendSingalMsg } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
 import { useRouter } from 'vue-router'
-
 const router = useRouter()
-const props = defineProps(['username'])
-// const ws = useWebSocket(handleMessage)
+const props = defineProps(['name', 'list'])
+const name = toRef(props, 'name')
 const input = ref(null)
 const scrollbarRef = ref(null)
 const ul = ref(null)
 let username = ''
 let isshow = ref(false)
+const emits = defineEmits(['addRecent'])
 const socket = useScoketIo()
-// 处理连接成功事件
-socket.emit('$test', 'Hello server!')
-
 const state = reactive({
   msg: '',
   msgList: [],
 })
-let name = ''
+
 const scrollToBottom = () => {
-  scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
+  if (scrollbarRef.value) {
+    scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
+  }
 }
+
 onBeforeMount(async () => {
-  name = router.currentRoute.value.query.name
   username = localStorage.getItem('username')
   if (!username) {
     router.push('/login')
     return
   }
-  // try {
-  //   let res = await getHistory()
-  //   state.msgList = res.data.result
-  // } catch (e) {
-  //   console.log(e)
-  // }
+  try {
+    let res = await getSingalHistory({ sender: username, reciver: props.name })
+    state.msgList = res.data.result
+  } catch (e) {
+    console.log(e)
+  }
   setTimeout(() => {
     scrollToBottom()
   }, 0)
 })
-
+watch(name, async () => {
+  let res = await getSingalHistory({ sender: username, reciver: name.value })
+  state.msgList = res.data.result
+})
 const emojiRegex = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g // Emoji 正则表达式
+
+socket.on('$chatmsg', (msg) => {
+  const _msgData = JSON.parse(msg)
+  state.msgList.push(_msgData)
+  setTimeout(() => {
+    scrollToBottom()
+  }, 1)
+})
 
 const handleSendBtnClick = async () => {
   const _msg = state.msg
@@ -55,22 +65,28 @@ const handleSendBtnClick = async () => {
     return
   }
   try {
-    // let res = await sendMsg({ user: username, msg: state.msg })
+    let res = await sendSingalMsg({
+      msg: state.msg,
+      sender: username,
+      reciver: name.value,
+    })
 
-    // ul.value.scrollTop = ul.value.scrollHeight
     if (res.data.code == 200) {
-      ws.send(
+      socket.emit(
+        '$chat',
         JSON.stringify({
           id: new Date().getTime(),
-          user: username,
+          sender: username,
+          reciver: name.value,
           dateTime: new Date().getTime(),
           msg: state.msg,
         })
       )
       state.msg = ''
-      console.log(ul)
+      console.log()
+      emits('addRecent', name.value)
       setTimeout(() => {
-        scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
+        scrollToBottom()
       }, 1)
     }
   } catch (e) {
@@ -79,10 +95,6 @@ const handleSendBtnClick = async () => {
   }
 }
 
-function handleMessage(e) {
-  const _msgData = JSON.parse(e.data)
-  state.msgList.push(_msgData)
-}
 const insertText = (item) => {
   isshow.value = false
   input.value.value = input.value.value + item
@@ -100,17 +112,13 @@ const insertText = (item) => {
       <el-scrollbar ref="scrollbarRef">
         <ul ref="ul">
           <li v-for="item in state.msgList" :key="item.id">
-            <div
-              class="msg"
-              :class="[item.user == username ? 'msgright' : 'msgleft']"
-            >
-              <span class="textuser">{{ item.user }}</span>
-              <span
-                class="textmsg"
-                :class="[item.user == username ? 'boxright' : 'boxleft']"
-              >
-                {{ item.msg }}</span
-              >
+            <div v-if="item.sender == username" class="msg msgright">
+              <span class="textuser">{{ item.sender }}</span>
+              <span class="textmsg boxright"> {{ item.msg }}</span>
+            </div>
+            <div v-else class="msg msgleft">
+              <span class="textuser">{{ name }}</span>
+              <span class="textmsg boxleft"> {{ item.msg }}</span>
             </div>
           </li>
         </ul>
