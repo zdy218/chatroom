@@ -1,7 +1,7 @@
 <script setup>
 import { reactive, onBeforeMount, ref, onMounted } from 'vue'
 import { useScoketIo } from '../hooks'
-import { getHistory, sendMsg } from '../utils/'
+import { getHistory, sendMsg, getAvatarList } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
@@ -15,6 +15,7 @@ const emits = defineEmits(['addChat'])
 const state = reactive({
   msg: '',
   msgList: [],
+  avatarList: [],
 })
 //滚动到底部
 const scrollToBottom = () => {
@@ -32,6 +33,8 @@ onBeforeMount(async () => {
     //获取聊天室历史记录
     let res = await getHistory()
     state.msgList = res.data.result
+    res = await getAvatarList()
+    state.avatarList = res.data.result
   } catch (e) {
     console.log(e)
   }
@@ -87,6 +90,12 @@ const insertText = (item) => {
   const textWithEmojis = input.value.value.replace(emojiRegex, item)
   state.msg = textWithEmojis
 }
+
+//对应用户头像
+const findAvatar = (item) => {
+  let obj = state.avatarList.find((t) => t.username == item)
+  if (obj?.['avatar']) return obj['avatar']
+}
 </script>
 
 <template>
@@ -97,18 +106,40 @@ const insertText = (item) => {
     <el-main class="main">
       <el-scrollbar ref="scrollbarRef">
         <ul ref="ul">
-          <li v-for="item in state.msgList" :key="item.id">
-            <div
-              class="msg"
-              :class="[item.user == username ? 'msgright' : 'msgleft']"
-            >
-              <span class="textuser">{{ item.user }}</span>
-              <span
-                class="textmsg"
-                :class="[item.user == username ? 'boxright' : 'boxleft']"
-              >
-                {{ item.msg }}</span
-              >
+          <li
+            v-for="item in state.msgList"
+            :key="item.id"
+            :class="[item.user == username ? 'msgright' : 'msgleft']"
+          >
+            <div v-if="item.user == username" class="msg msgright">
+              <div class="msgrightbox" style="margin-right: 5px">
+                <span class="textuser" style="text-align: right">{{
+                  item.user
+                }}</span>
+                <span class="textmsg boxright"> {{ item.msg }}</span>
+              </div>
+              <div class="avatarbox">
+                <el-avatar
+                  shape="square"
+                  fit="fill"
+                  :size="30"
+                  :src="findAvatar(item.user)"
+                />
+              </div>
+            </div>
+            <div v-else class="msg msgleft">
+              <div class="avatarbox">
+                <el-avatar
+                  shape="square"
+                  fit="fill"
+                  :size="30"
+                  :src="findAvatar(item.user)"
+                />
+              </div>
+              <div class="msgrightbox" style="margin-left: 5px">
+                <span class="textuser">{{ item.user }}</span>
+                <span class="textmsg boxleft"> {{ item.msg }}</span>
+              </div>
             </div>
           </li>
         </ul>
@@ -138,6 +169,10 @@ const insertText = (item) => {
   ul {
     padding: 0;
     list-style: none;
+    li {
+      display: flex;
+      flex-direction: row;
+    }
   }
   .header {
     height: 50px;
@@ -182,13 +217,17 @@ input {
     color: #64d42c;
   }
 }
+
 .msg {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .msgright {
-  align-items: flex-end;
+  justify-content: flex-end;
+}
+.msgrightbox {
+  float: left;
 }
 .boxright {
   background-color: #64d42c;
@@ -196,7 +235,7 @@ input {
   margin-top: 5px;
 }
 .msgleft {
-  align-items: flex-start;
+  justify-content: flex-start;
 }
 .boxleft {
   background-color: #fff;
@@ -209,12 +248,18 @@ input {
 }
 .textuser {
   font-size: 12px;
+  display: block;
 }
 .textmsg {
   padding: 3px 8px;
   border-radius: 4px;
-  max-width: 250px;
+  max-width: 240px;
   white-space: pre-wrap;
   word-break: break-all;
+  display: block;
+}
+.avatarbox {
+  float: left;
+  margin-top: 24px;
 }
 </style>

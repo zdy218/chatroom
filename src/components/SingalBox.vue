@@ -7,7 +7,7 @@ import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
 import { useRouter } from 'vue-router'
 const router = useRouter()
-const props = defineProps(['name', 'list'])
+const props = defineProps(['name', 'list', 'avatar', 'otheruser'])
 const name = toRef(props, 'name')
 const input = ref(null)
 const scrollbarRef = ref(null)
@@ -111,14 +111,35 @@ const insertText = (item) => {
     <el-main class="main">
       <el-scrollbar ref="scrollbarRef">
         <ul ref="ul">
-          <li v-for="item in state.msgList" :key="item.id">
+          <li
+            v-for="item in state.msgList"
+            :key="item.id"
+            :class="[item.sender == username ? 'msgright' : 'msgleft']"
+          >
             <div v-if="item.sender == username" class="msg msgright">
-              <span class="textuser">{{ item.sender }}</span>
-              <span class="textmsg boxright"> {{ item.msg }}</span>
+              <div class="msgrightbox" style="margin-right: 5px">
+                <span class="textuser" style="text-align: right">{{
+                  item.sender
+                }}</span>
+                <span class="textmsg boxright"> {{ item.msg }}</span>
+              </div>
+              <div class="avatarbox">
+                <el-avatar shape="square" fit="fill" :size="30" :src="avatar" />
+              </div>
             </div>
             <div v-else class="msg msgleft">
-              <span class="textuser">{{ name }}</span>
-              <span class="textmsg boxleft"> {{ item.msg }}</span>
+              <div class="avatarbox">
+                <el-avatar
+                  shape="square"
+                  fit="fill"
+                  :size="30"
+                  :src="otheruser.avatar"
+                />
+              </div>
+              <div class="msgrightbox" style="margin-left: 5px">
+                <span class="textuser">{{ name }}</span>
+                <span class="textmsg boxleft"> {{ item.msg }}</span>
+              </div>
             </div>
           </li>
         </ul>
@@ -148,6 +169,10 @@ const insertText = (item) => {
   ul {
     padding: 0;
     list-style: none;
+    li {
+      display: flex;
+      flex-direction: row;
+    }
   }
   .header {
     height: 50px;
@@ -194,11 +219,14 @@ input {
 }
 .msg {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .msgright {
-  align-items: flex-end;
+  justify-content: flex-end;
+}
+.msgrightbox {
+  float: left;
 }
 .boxright {
   background-color: #64d42c;
@@ -206,7 +234,7 @@ input {
   margin-top: 5px;
 }
 .msgleft {
-  align-items: flex-start;
+  justify-content: flex-start;
 }
 .boxleft {
   background-color: #fff;
@@ -219,12 +247,18 @@ input {
 }
 .textuser {
   font-size: 12px;
+  display: block;
 }
 .textmsg {
   padding: 3px 8px;
   border-radius: 4px;
-  max-width: 250px;
+  max-width: 240px;
   white-space: pre-wrap;
   word-break: break-all;
+  display: block;
+}
+.avatarbox {
+  float: left;
+  margin-top: 24px;
 }
 </style>

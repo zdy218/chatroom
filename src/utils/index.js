@@ -9,6 +9,9 @@ export const sendMsg = async (data) => { return await service({ url: '/onlineroo
 //获取用户信息
 export const getSelf = async (data) => { return await service({ url: '/user/getSelf', method: 'post', data }) }
 
+//获取所有用户头像
+
+export const getAvatarList = async () => { return await service({ url: '/user/getavatar' }) }
 //搜索用户
 export const searchUser = async (data) => { return await service({ url: '/user/search', method: 'post', data }) }
 

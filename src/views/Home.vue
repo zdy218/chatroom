@@ -8,6 +8,7 @@ import {
   addRecentChat,
   getSingalHistory,
   getSelf,
+  getAvatarList,
 } from '../utils'
 import { ElMessage } from 'element-plus'
 import ChatBox from '../components/ChatBox.vue'
@@ -21,6 +22,7 @@ let fit = 'space-scale'
 let user = reactive({
   username: '',
   avatar: '',
+  avatarlist: [],
 })
 let path = reactive({
   path: '',
@@ -28,12 +30,16 @@ let path = reactive({
 let badge = ref(0)
 let pathList = reactive({
   searchList: [],
-  list: [''],
+  list: [],
   list1: [],
 })
 let input3 = ref('')
 let isshow = ref(false)
-let imageUrl = ref('')
+let otheruser = reactive({
+  username: '',
+  avatar: '',
+})
+
 onBeforeMount(async () => {
   user.username = localStorage.getItem('username')
   path.path = localStorage.getItem('path') ? localStorage.getItem('path') : '/'
@@ -44,10 +50,21 @@ onBeforeMount(async () => {
   try {
     //通过当前用户去查询最近聊天
     let res = await getRecentChat({ sender: user.username })
-    pathList.list = ['在线聊天室', ...res.data.result]
+    pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
+    console.log(pathList.list)
     res = await getSelf({ username: user.username })
-
     user.avatar = res.data.result[0].avatar
+
+    if (path.path != '/') {
+      otheruser = pathList.list.find((t) => {
+        if (t.username == path.path) {
+          return t
+        }
+      })
+    }
+    //获取用户头像
+    res = await getAvatarList()
+    user.avatarlist = res.data.result
   } catch (e) {
     console.log(e)
   }
@@ -64,6 +81,10 @@ const changePath = async (item) => {
         reciver: path.path,
       })
       pathList.list1 = res.data.result
+      res = await getRecentChat({ sender: user.username })
+      pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
+      otheruser.username = item
+      otheruser.avatar = findAvatar(item)
     }
   }
 }
@@ -84,10 +105,11 @@ const handleSearch = async () => {
 const handleAddFriend = (name = '') => {
   isshow.value = false
   input3.value = ''
-  if (name === '' || pathList.list.includes(name)) {
+  if (name === '' || pathList.list.find((t) => t.username == name)) {
     return
   } else {
-    pathList.list.push(name)
+    let { avatar } = user.avatarlist.find((t) => t.username == name)
+    pathList.list.push({ username: name, avatar })
   }
   addRecentChat({ username: name, sender: user.username })
 }
@@ -95,7 +117,7 @@ const handleAddFriend = (name = '') => {
 socket.on('$addchat', async (msg) => {
   if (msg == user.username) {
     let res = await getRecentChat({ sender: msg })
-    pathList.list = ['在线聊天室', ...res.data.result]
+    pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
   }
 })
 const handleAddRecentChat = async (name) => {
@@ -131,6 +153,11 @@ const beforeAvatarUpload = (rawFile) => {
     user.avatar = e.target.result
   }
   return true
+}
+//对应用户头像
+const findAvatar = (item) => {
+  let obj = user.avatarlist.find((t) => t.username == item)
+  if (obj?.['avatar']) return obj['avatar']
 }
 </script>
 
@@ -178,6 +205,12 @@ const beforeAvatarUpload = (rawFile) => {
               :key="index"
               @click="handleAddFriend(item)"
             >
+              <el-avatar
+                shape="square"
+                :fit="fit"
+                :size="40"
+                :src="findAvatar(item)"
+              />
               {{ item }}
             </p>
             <p v-else @click="handleAddFriend()">暂无该用户</p>
@@ -193,16 +226,24 @@ const beforeAvatarUpload = (rawFile) => {
           text-color="black"
         >
           <el-menu-item
-            :index="item == '在线聊天室' ? '/' : item"
+            :index="item.username == '在线聊天室' ? '/' : item.username"
             v-for="(item, index) in pathList.list"
             :key="index"
             :class="[
-              item == path.path || (path.path == '/' && item == '在线聊天室')
+              item.username == path.path ||
+              (path.path == '/' && item.username == '在线聊天室')
                 ? 'active-menu'
                 : '',
             ]"
           >
-            <p style="margin-left: 3px">{{ item }}</p>
+            <el-avatar
+              v-if="item.username != '在线聊天室'"
+              shape="square"
+              :fit="fit"
+              :size="40"
+              :src="item.avatar"
+            />
+            <p style="margin-left: 3px">{{ item.username }}</p>
             <p style="margin-right: 5px" v-if="badge > 0">{{ badge }}</p>
           </el-menu-item>
         </el-menu>
@@ -214,6 +255,8 @@ const beforeAvatarUpload = (rawFile) => {
       :name="path.path"
       @addRecent="handleAddRecentChat"
       :list="pathList.list1"
+      :avatar="user.avatar"
+      :otheruser="otheruser"
     />
   </div>
 </template>
@@ -277,7 +320,6 @@ const beforeAvatarUpload = (rawFile) => {
 .el-menu-item {
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
 }
 
 .avatar-uploader-icon {
