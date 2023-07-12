@@ -9,6 +9,7 @@ import {
   getSingalHistory,
   getSelf,
   getAvatarList,
+  updateUnreadMsgNum,
 } from '../utils'
 import { ElMessage } from 'element-plus'
 import ChatBox from '../components/ChatBox.vue'
@@ -51,7 +52,6 @@ onBeforeMount(async () => {
     //通过当前用户去查询最近聊天
     let res = await getRecentChat({ sender: user.username })
     pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
-    console.log(pathList.list)
     res = await getSelf({ username: user.username })
     user.avatar = res.data.result[0].avatar
 
@@ -114,14 +114,24 @@ const handleAddFriend = (name = '') => {
   addRecentChat({ username: name, sender: user.username })
 }
 //通知用户更新最近聊天，对应的用户收到信息通知
-socket.on('$addchat', async (msg) => {
-  if (msg == user.username) {
-    let res = await getRecentChat({ sender: msg })
+socket.on('$addchat', async ({ name, username }) => {
+  if (name == user.username) {
+    let res = await getRecentChat({ sender: name })
     pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
+    res = await updateUnreadMsgNum({ sender: username, username: name })
+    const obj = res.data.result[0]
+    console.log(obj)
+    pathList.list.forEach((item) => {
+      if (item.username == obj.sender) {
+        item.badge = obj.unreadnum
+      }
+    })
+    console.log(pathList.list)
   }
 })
-const handleAddRecentChat = async (name) => {
-  socket.emit('$add', name)
+const handleAddRecentChat = async ({ name, username }) => {
+  socket.emit('$add', { name, username })
+  console.log(name, username)
 }
 //通知有新信息
 socket.on('$addbadgevalue', async (msg) => {
@@ -244,7 +254,9 @@ const findAvatar = (item) => {
               :src="item.avatar"
             />
             <p style="margin-left: 3px">{{ item.username }}</p>
-            <p style="margin-right: 5px" v-if="badge > 0">{{ badge }}</p>
+            <p v-if="item.badge" class="badge">
+              {{ item.badge }}
+            </p>
           </el-menu-item>
         </el-menu>
       </div>
@@ -333,5 +345,15 @@ const findAvatar = (item) => {
 }
 .el-avatar {
   margin-left: 3px;
+}
+.badge {
+  margin-left: 85px;
+  border: none;
+  width: fit-content;
+  line-height: 17px;
+  padding: 3px;
+  background-color: #eb0707d4;
+  color: wheat;
+  border-radius: 100%;
 }
 </style>

@@ -20,8 +20,15 @@ export const addRecentChat = async (data) => { return await service({ url: '/use
 
 //获取最近聊天用户
 export const getRecentChat = async (data) => { return await service({ url: '/user/getrecentchat', method: 'post', data }) }
-//获取私聊数据
+
+//获取私聊信息
 export const getSingalHistory = async (data) => { return await service({ url: '/singalroom', method: 'post', data }) }
 
 //发送私聊信息
 export const sendSingalMsg = async (data) => { return await service({ url: '/singalroom/send', method: 'post', data }) }
+
+//添加私聊信息
+export const addUnreadMsg = async (data) => { return await service({ url: '/user/addUnreadMsg', method: 'post', data }) }
+
+//更新未读私聊信息数目
+export const updateUnreadMsgNum = async (data) => { return await service({ url: '/user/updateUnreadMsgNum', method: 'post', data }) }

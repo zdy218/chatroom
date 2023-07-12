@@ -1,7 +1,7 @@
 <script setup>
-import { reactive, onBeforeMount, ref, onMounted, toRef, watch } from 'vue'
+import { reactive, onBeforeMount, ref, toRef, watch } from 'vue'
 import { useScoketIo } from '../hooks'
-import { getSingalHistory, sendSingalMsg } from '../utils/'
+import { getSingalHistory, sendSingalMsg, addUnreadMsg } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
@@ -84,10 +84,11 @@ const handleSendBtnClick = async () => {
       )
       state.msg = ''
       console.log()
-      emits('addRecent', name.value)
+      emits('addRecent', { name: name.value, username })
       setTimeout(() => {
         scrollToBottom()
       }, 1)
+      addUnreadMsg({ sender: username, username: name.value })
     }
   } catch (e) {
     console.log(e)
