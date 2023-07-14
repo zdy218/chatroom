@@ -83,12 +83,11 @@ const handleSendBtnClick = async () => {
         })
       )
       state.msg = ''
-      console.log()
-      emits('addRecent', { name: name.value, username })
       setTimeout(() => {
         scrollToBottom()
       }, 1)
-      addUnreadMsg({ sender: username, username: name.value })
+
+      emits('addRecent', { name: name.value, username })
     }
   } catch (e) {
     console.log(e)

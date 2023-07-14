@@ -32,3 +32,12 @@ export const addUnreadMsg = async (data) => { return await service({ url: '/user
 
 //更新未读私聊信息数目
 export const updateUnreadMsgNum = async (data) => { return await service({ url: '/user/updateUnreadMsgNum', method: 'post', data }) }
+
+//获取所有未读信息数目
+export const getAllUnreadMsg = async (data) => { return await service({ url: '/user/getAllUnreadMsg', method: 'post', data }) }
+
+//已读消息
+export const readMsg = async (data) => { return await service({ url: '/user/readMsg', method: 'post', data }) }
+
+//获取最近消息
+export const getLastedMsg = async (data) => { return await service({ url: '/singalroom/getLastedMsg', method: 'post', data }) }

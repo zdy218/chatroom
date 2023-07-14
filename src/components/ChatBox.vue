@@ -40,7 +40,7 @@ onBeforeMount(async () => {
   }
   setTimeout(() => {
     scrollToBottom()
-  }, 0)
+  }, 1)
 })
 
 //将表情转换未16进制
