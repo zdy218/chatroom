@@ -41,3 +41,6 @@ export const readMsg = async (data) => { return await service({ url: '/user/read
 
 //获取最近消息
 export const getLastedMsg = async (data) => { return await service({ url: '/singalroom/getLastedMsg', method: 'post', data }) }
+
+//获取最近消息
+export const getOnlineLastedMsg = async () => { return await service({ url: '/onlineroom/getLastedMsg', method: 'post' }) }

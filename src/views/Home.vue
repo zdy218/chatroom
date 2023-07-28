@@ -14,6 +14,7 @@ import {
   readMsg,
   addUnreadMsg,
   getLastedMsg,
+  getOnlineLastedMsg,
 } from '../utils'
 import { ElMessage } from 'element-plus'
 import ChatBox from '../components/ChatBox.vue'
@@ -21,7 +22,6 @@ import SingalBox from '../components/SingalBox.vue'
 import 'element-plus/theme-chalk/src/message.scss'
 import { useScoketIo } from '../hooks'
 import { Plus } from '@element-plus/icons-vue'
-
 const router = useRouter()
 const socket = useScoketIo()
 let fit = 'space-scale'
@@ -33,7 +33,6 @@ let user = reactive({
 let path = reactive({
   path: '',
 })
-let badge = ref(0)
 let pathList = reactive({
   searchList: [],
   list: [],
@@ -45,7 +44,10 @@ let otheruser = reactive({
   username: '',
   avatar: '',
 })
-
+let lastedMsg = reactive({
+  user: '',
+  msg: '',
+})
 onBeforeMount(async () => {
   user.username = localStorage.getItem('username')
   path.path = localStorage.getItem('path') ? localStorage.getItem('path') : '/'
@@ -82,7 +84,13 @@ onBeforeMount(async () => {
         }
       })
     })
-
+    //已读当前用户的消息
+    pathList.list.forEach((t) => {
+      if (t.username === path.path && t.badge > 0) {
+        t.badge = 0
+        readMsg({ sender: t.username, username: user.username })
+      }
+    })
     //获取最近聊天记录
     let arr = pathList.list.map((item) => item.username).splice(1)
     arr.forEach(async (t) => {
@@ -93,7 +101,10 @@ onBeforeMount(async () => {
       ).recentMsg = row.msg
     })
 
-    console.log(pathList.list)
+    //获取聊天室最近一条消息
+    res = await getOnlineLastedMsg()
+    lastedMsg.user = res.data.result.rows[0].user
+    lastedMsg.msg = res.data.result.rows[0].msg
   } catch (e) {
     console.log(e)
   }
@@ -102,46 +113,44 @@ const changePath = async (item) => {
   if (item == localStorage.getItem('path')) {
     return
   } else {
-    if (item != '/') {
-      let res = await getSingalHistory({
-        sender: user.username,
-        reciver: path.path,
-      })
-      pathList.list1 = res.data.result
-      res = await getRecentChat({ sender: user.username })
-      pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
-      res = await getAllUnreadMsg({ username: user.username })
-      let { result } = res.data
-      pathList.list.forEach((t) => {
-        result.forEach((obj) => {
-          if (t.username == obj.sender) {
-            t.badge = obj.unreadnum
-          }
-        })
-      })
+    path.path = item
+    localStorage.setItem('path', item)
+    if (item == '/') {
+      return
+    } else {
+      // let res = await getSingalHistory({
+      //   sender: user.username,
+      //   reciver: path.path,
+      // })
+      // res = await getAllUnreadMsg({ username: user.username })
+      // let { result } = res.data
+      // pathList.list.forEach((t) => {
+      //   result.forEach((obj) => {
+      //     if (t.username === obj.sender) {
+      //       t.badge = obj.unreadnum
+      //     }
+      //   })
+      // })
 
       pathList.list.forEach((t) => {
-        if (t.username == item && t.badge) {
+        if (t.username === item && t.badge > 0) {
           t.badge = 0
           readMsg({ sender: item, username: user.username })
         }
       })
 
       //获取最近聊天记录
-      let arr = pathList.list.map((item) => item.username).splice(1)
-      arr.forEach(async (t) => {
-        res = await getLastedMsg({ arr: [t, user.username] })
-        let row = res.data.result.rows[0]
-        pathList.list.find(
-          (item) => item.username == row.sender || item.username == row.reciver
-        ).recentMsg = row.msg
-      })
-      // console.log({ sender: user.username, username: item })
-      otheruser.username = item
+      // let arr = pathList.list.map((item) => item.username).splice(1)
+      // arr.forEach(async (t) => {
+      //   res = await getLastedMsg({ arr: [t, user.username] })
+      //   let row = res.data.result.rows[0]
+      //   pathList.list.find(
+      //     (item) => item.username == row.sender || item.username == row.reciver
+      //   ).recentMsg = row.msg
+      // })
+      // otheruser.username = item
       otheruser.avatar = findAvatar(item)
     }
-    path.path = `${item}`
-    localStorage.setItem('path', item)
   }
 }
 const handleSearch = async () => {
@@ -170,36 +179,47 @@ const handleAddFriend = (name = '') => {
   addRecentChat({ username: name, sender: user.username })
 }
 //通知用户更新最近聊天，对应的用户收到信息通知
-socket.on('$addchat', async ({ name, username }) => {
-  console.log(name, username, path.path)
-  if (path.path == username) return
-  if (name == user.username) {
-    addUnreadMsg({ sender: username, username: name })
-    let res = await getRecentChat({ sender: name })
-    pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
-    res = await updateUnreadMsgNum({ sender: username, username: name })
-    const obj = res.data.result[0]
-    pathList.list.forEach((item) => {
-      if (item.username == obj.sender) {
-        item.badge = obj.unreadnum
-      }
-    })
-  }
-})
-const handleAddRecentChat = ({ name, username }) => {
-  socket.emit('$add', { name, username })
-}
-//通知有新信息
-socket.on('$addbadgevalue', async (msg) => {
-  const { pth, name } = msg
-  if (pth != path.path && name != user.username) {
-    badge.value++
-  } else {
+socket.on('$addchat', async ({ name, username, msg }) => {
+  //更新最近聊天记录
+  pathList.list.find((item) =>
+    [name, username].includes(item.username)
+  ).recentMsg = msg
+  if (path.path == username) {
+    readMsg({ sender: username, username: name })
     return
   }
+  if (name == user.username) {
+    //addUnreadMsg({ sender: username, username: name })
+    // let res = await getRecentChat({ sender: name })
+    // pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
+    let res = await updateUnreadMsgNum({ sender: username, username: name })
+    const obj = res.data.result[0]
+    pathList.list.find((item) => item.username == obj.sender).badge =
+      obj.unreadnum
+    // //获取最近聊天记录
+    // let arr = pathList.list.map((item) => item.username).splice(1)
+    // arr.forEach(async (t) => {
+    //   res = await getLastedMsg({ arr: [t, user.username] })
+    //   let row = res.data.result.rows[0]
+    //   pathList.list.find(
+    //     (item) => item.username == row.sender || item.username == row.reciver
+    //   ).recentMsg = row.msg
+    // })
+  }
 })
-const handleAddChat = () => {
-  socket.emit('$addbadge', { pth: path.path, name: user.username })
+const handleAddRecentChat = ({ name, username, msg }) => {
+  socket.emit('$add', { name, username, msg })
+  pathList.list.find((item) => item.username == name).recentMsg = msg
+}
+//通知有新信息
+socket.on('$updateLastedMsg', async ({ msg, user }) => {
+  lastedMsg.user = user
+  lastedMsg.msg = msg
+})
+const handleAddChat = ({ msg, user }) => {
+  lastedMsg.user = user
+  lastedMsg.msg = msg
+  socket.emit('$updateLasted', { msg, user })
 }
 const handleAvatarSuccess = (response, uploadFile) => {
   ElMessage.success('修改成功!')
@@ -222,8 +242,7 @@ const beforeAvatarUpload = (rawFile) => {
 }
 //对应用户头像
 const findAvatar = (item) => {
-  let obj = user.avatarlist.find((t) => t.username == item)
-  if (obj?.['avatar']) return obj['avatar']
+  return user.avatarlist.find((t) => t.username == item).avatar
 }
 </script>
 
@@ -310,10 +329,7 @@ const findAvatar = (item) => {
               :src="item.avatar"
             />
             <div>
-              <p
-                style="margin-left: 3px"
-                :class="item.username != '在线聊天室' ? 'centerbox' : ''"
-              >
+              <p style="margin-left: 3px" class="centerbox">
                 {{ item.username }}
               </p>
               <p
@@ -322,9 +338,12 @@ const findAvatar = (item) => {
               >
                 {{ item.recentMsg }}
               </p>
+              <p v-else style="margin-top: 5px; margin-left: 3px">
+                {{ lastedMsg.user }}:{{ lastedMsg.msg }}
+              </p>
             </div>
 
-            <p v-if="item.badge" class="badge">
+            <p v-show="item.badge" class="badge">
               {{ item.badge }}
             </p>
           </el-menu-item>
@@ -336,7 +355,6 @@ const findAvatar = (item) => {
       v-else
       :name="path.path"
       @addRecent="handleAddRecentChat"
-      :list="pathList.list1"
       :avatar="user.avatar"
       :otheruser="otheruser"
     />

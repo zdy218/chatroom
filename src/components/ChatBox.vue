@@ -47,7 +47,7 @@ onBeforeMount(async () => {
 const emojiRegex = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g
 
 //接收聊天室的信息
-socket.on('$chat', (msg) => {
+socket.on('chat', (msg) => {
   const _msgData = JSON.parse(msg)
   state.msgList.push(_msgData)
   setTimeout(() => {
@@ -75,8 +75,9 @@ const handleSendBtnClick = async () => {
           msg: state.msg,
         })
       )
+
+      emits('addChat', { msg: state.msg, user: username })
       state.msg = ''
-      emits('addChat')
     }
   } catch (e) {
     console.log(e)

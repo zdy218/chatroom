@@ -7,7 +7,7 @@ import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
 import { useRouter } from 'vue-router'
 const router = useRouter()
-const props = defineProps(['name', 'list', 'avatar', 'otheruser'])
+const props = defineProps(['name', 'avatar', 'otheruser'])
 const name = toRef(props, 'name')
 const input = ref(null)
 const scrollbarRef = ref(null)
@@ -46,12 +46,18 @@ onBeforeMount(async () => {
 watch(name, async () => {
   let res = await getSingalHistory({ sender: username, reciver: name.value })
   state.msgList = res.data.result
+  setTimeout(() => {
+    scrollToBottom()
+  }, 0)
 })
 const emojiRegex = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g // Emoji 正则表达式
 
 socket.on('$chatmsg', (msg) => {
   const _msgData = JSON.parse(msg)
-  state.msgList.push(_msgData)
+  if (_msgData.sender == username && _msgData.reciver == name.value) {
+    state.msgList.push(_msgData)
+  }
+
   setTimeout(() => {
     scrollToBottom()
   }, 1)
@@ -59,7 +65,6 @@ socket.on('$chatmsg', (msg) => {
 
 const handleSendBtnClick = async () => {
   const _msg = state.msg
-
   if (!_msg.trim().length) {
     ElMessage.error('消息内容不能为空!')
     return
@@ -82,12 +87,13 @@ const handleSendBtnClick = async () => {
           msg: state.msg,
         })
       )
-      state.msg = ''
+
       setTimeout(() => {
         scrollToBottom()
       }, 1)
 
-      emits('addRecent', { name: name.value, username })
+      emits('addRecent', { name: name.value, username, msg: state.msg })
+      state.msg = ''
     }
   } catch (e) {
     console.log(e)
