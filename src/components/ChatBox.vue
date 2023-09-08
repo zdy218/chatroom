@@ -84,12 +84,17 @@ const handleSendBtnClick = async () => {
     ElMessage.error('发送失败!')
   }
 }
+const handleSendEnterMsg = () => {
+  handleSendBtnClick()
+  input.value.blur()
+}
 // 将 Emoji 替换为指定的文本
 const insertText = (item) => {
   isshow.value = false
   input.value.value = input.value.value + item
   const textWithEmojis = input.value.value.replace(emojiRegex, item)
   state.msg = textWithEmojis
+  input.value.focus()
 }
 
 //对应用户头像
@@ -151,7 +156,12 @@ const findAvatar = (item) => {
         <p class="emoji" @click="isshow = !isshow">&#128512;</p>
       </el-row>
       <el-row>
-        <input type="text" v-model="state.msg" ref="input" />
+        <input
+          type="text"
+          v-model="state.msg"
+          ref="input"
+          @keyup.enter="handleSendEnterMsg"
+        />
       </el-row>
       <el-row class="btnrow">
         <el-button type="success" @click="handleSendBtnClick">发送</el-button>

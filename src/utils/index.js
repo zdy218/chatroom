@@ -7,7 +7,7 @@ export const getHistory = async () => { return await service({ url: '/onlineroom
 export const sendMsg = async (data) => { return await service({ url: '/onlineroom/send', method: 'post', data }) }
 
 //获取用户信息
-export const getSelf = async (data) => { return await service({ url: '/user/getSelf', method: 'post', data }) }
+export const getSelfAvatar = async (data) => { return await service({ url: '/user/getSelf', method: 'post', data }) }
 
 //获取所有用户头像
 

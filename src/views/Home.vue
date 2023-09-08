@@ -2,12 +2,13 @@
 import { onBeforeMount, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search } from '@element-plus/icons-vue'
+
 import {
   searchUser,
   getRecentChat,
   addRecentChat,
   getSingalHistory,
-  getSelf,
+  getSelfAvatar,
   getAvatarList,
   updateUnreadMsgNum,
   getAllUnreadMsg,
@@ -59,9 +60,8 @@ onBeforeMount(async () => {
     //通过当前用户去查询最近聊天
     let res = await getRecentChat({ sender: user.username })
     pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
-
     //获取自身头像
-    res = await getSelf({ username: user.username })
+    res = await getSelfAvatar({ username: user.username })
     user.avatar = res.data.result[0].avatar
     if (path.path != '/') {
       otheruser = pathList.list.find((t) => {
