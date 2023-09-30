@@ -98,13 +98,15 @@ onBeforeMount(async () => {
       let row = res.data.result.rows[0]
       pathList.list.find(
         (item) => item.username == row.sender || item.username == row.reciver
-      ).recentMsg = row.msg
+      ).recentMsg = row.msg.startsWith('http') ? '[图片]' : row.msg
     })
 
     //获取聊天室最近一条消息
     res = await getOnlineLastedMsg()
     lastedMsg.user = res.data.result.rows[0].user
-    lastedMsg.msg = res.data.result.rows[0].msg
+    lastedMsg.msg = res.data.result.rows[0].msg.startsWith('http')
+      ? '[图片]'
+      : res.data.result.rows[0].msg
   } catch (e) {
     console.log(e)
   }
@@ -226,8 +228,9 @@ const handleAvatarSuccess = (response, uploadFile) => {
 }
 
 const beforeAvatarUpload = (rawFile) => {
-  if (rawFile.type !== 'image/jpeg') {
-    ElMessage.error('Avatar picture must be JPG format!')
+  console.log(rawFile)
+  if (rawFile.type !== 'image/png') {
+    ElMessage.error('Avatar picture must be  PNG format!')
     return false
   } else if (rawFile.size / 1024 / 1024 > 2) {
     ElMessage.error('Avatar picture size can not exceed 2MB!')

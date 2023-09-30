@@ -9,18 +9,24 @@
   },
   "dependencies": {
     "axios": "^1.4.0",
+    "chatgpt": "^5.2.5",
     "element-plus": "^2.3.7",
     "sass": "^1.63.6",
     "socket.io": "^4.7.1",
     "socket.io-client": "^4.7.1",
+    "vite": "^3.2.7",
     "vue": "^3.2.45",
     "vue-router": "^4.1.6",
     "webrtc": "^1.14.1"
   },
   "devDependencies": {
+    "@babel/core": "^7.22.17",
+    "@babel/preset-env": "^7.22.15",
+    "@babel/preset-flow": "^7.22.15",
+    "@babel/preset-react": "^7.22.15",
     "@vitejs/plugin-vue": "^3.2.0",
+    "@vue/babel-plugin-jsx": "^1.1.5",
     "unplugin-auto-import": "^0.16.4",
-    "unplugin-vue-components": "^0.25.1",
-    "vite": "^3.2.4"
+    "unplugin-vue-components": "^0.25.1"
   }
 }

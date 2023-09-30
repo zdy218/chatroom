@@ -4,7 +4,10 @@ import { useScoketIo } from '../hooks'
 import { getHistory, sendMsg, getAvatarList } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
+import { Folder } from '@element-plus/icons-vue'
+import { uploadUrl } from '../configs'
 import 'element-plus/theme-chalk/src/message.scss'
+import { stroageOnlineImage } from '../utils/'
 const input = ref(null)
 const scrollbarRef = ref(null)
 const ul = ref(null)
@@ -17,6 +20,7 @@ const state = reactive({
   msgList: [],
   avatarList: [],
 })
+let sf = ref()
 //滚动到底部
 const scrollToBottom = () => {
   if (scrollbarRef.value) {
@@ -102,6 +106,64 @@ const findAvatar = (item) => {
   let obj = state.avatarList.find((t) => t.username == item)
   if (obj?.['avatar']) return obj['avatar']
 }
+const handleFileSelect = async (e) => {
+  const file = e.target.files[0]
+  sf.value = e.target.files[0]
+  const reader = new FileReader()
+  reader.readAsArrayBuffer(file)
+
+  reader.onload = async (event) => {
+    // 将文件内容转换为二进制数据并发送
+    const blob = new Blob([event.target.result], { type: file.type })
+    const data = { file: blob, type: file.type, name: file.name }
+    if (file.type.startsWith('image/')) {
+      const blob = new Blob([event.target.result])
+      const url = URL.createObjectURL(blob)
+      // state.msgList.push({
+      //   id: new Date().getTime(),
+      //   user: username,
+      //   dateTime: new Date().getTime(),
+      //   msg: url,
+      // })
+      setTimeout(() => {
+        scrollToBottom()
+      }, 1)
+      emits('addChat', { msg: '[图片]', user: username })
+      let formData = new FormData()
+
+      formData.append('imageStore', sf.value)
+      let res = await stroageOnlineImage({
+        data: { sender: username },
+        formData,
+      })
+
+      socket.emit('sendImageFile', {
+        user: username,
+        msg: res.data.result,
+        type: file.type,
+      })
+    }
+  }
+}
+socket.on('handleSendImageFile', ({ user, msg, type }) => {
+  if (type.startsWith('image/')) {
+    state.msgList.push({
+      id: new Date().getTime(),
+      user: user,
+      dateTime: new Date().getTime(),
+      msg,
+    })
+    setTimeout(() => {
+      scrollToBottom()
+    }, 1)
+  }
+})
+const handleSendFile = () => {
+  const fileInput = document.createElement('input')
+  fileInput.type = 'file'
+  fileInput.addEventListener('change', handleFileSelect)
+  fileInput.click()
+}
 </script>
 
 <template>
@@ -122,7 +184,10 @@ const findAvatar = (item) => {
                 <span class="textuser" style="text-align: right">{{
                   item.user
                 }}</span>
-                <span class="textmsg boxright"> {{ item.msg }}</span>
+                <span v-if="item.msg.startsWith('http')">
+                  <img :src="item.msg" style="width: 50%; float: right" />
+                </span>
+                <span v-else class="textmsg boxright"> {{ item.msg }}</span>
               </div>
               <div class="avatarbox">
                 <el-avatar
@@ -144,7 +209,10 @@ const findAvatar = (item) => {
               </div>
               <div class="msgrightbox" style="margin-left: 5px">
                 <span class="textuser">{{ item.user }}</span>
-                <span class="textmsg boxleft"> {{ item.msg }}</span>
+                <span v-if="item.msg.startsWith('http')">
+                  <img :src="item.msg" style="width: 50%" />
+                </span>
+                <span v-else class="textmsg boxleft"> {{ item.msg }}</span>
               </div>
             </div>
           </li>
@@ -154,6 +222,7 @@ const findAvatar = (item) => {
     <el-footer class="footer">
       <el-row>
         <p class="emoji" @click="isshow = !isshow">&#128512;</p>
+        <el-icon class="folder" @click="handleSendFile"><Folder /></el-icon>
       </el-row>
       <el-row>
         <input
@@ -202,6 +271,14 @@ const findAvatar = (item) => {
   }
   .footer {
     height: fit-content;
+  }
+}
+.folder {
+  font-size: 20px;
+  margin-left: 10px;
+  margin-top: 7px;
+  &:hover {
+    cursor: pointer;
   }
 }
 .emoji {

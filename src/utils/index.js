@@ -1,5 +1,6 @@
-import service from './service'
 
+import service from './service'
+import axios from 'axios'
 //获取历史聊天记录
 export const getHistory = async () => { return await service({ url: '/onlineroom' }) }
 
@@ -11,7 +12,7 @@ export const getSelfAvatar = async (data) => { return await service({ url: '/use
 
 //获取所有用户头像
 
-export const getAvatarList = async () => { return await service({ url: '/user/getavatar' }) }
+export const getAvatarList = async () => { return await service({ url: '/user/getavatar', }) }
 //搜索用户
 export const searchUser = async (data) => { return await service({ url: '/user/search', method: 'post', data }) }
 
@@ -44,3 +45,25 @@ export const getLastedMsg = async (data) => { return await service({ url: '/sing
 
 //获取最近消息
 export const getOnlineLastedMsg = async () => { return await service({ url: '/onlineroom/getLastedMsg', method: 'post' }) }
+
+//存储聊天中发送的图片文件
+export const stroageImage = async ({ data, formData }) => {
+
+  return await service({
+    url: '/singalroom/stroageImage', method: 'post', data: formData, headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    params: data
+  })
+}
+
+//存储聊天中发送的图片文件
+export const stroageOnlineImage = async ({ data, formData }) => {
+
+  return await service({
+    url: '/onlineroom/stroageImage', method: 'post', data: formData, headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    params: data
+  })
+}
