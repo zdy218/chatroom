@@ -1,26 +1,33 @@
 <script setup>
 import { reactive, onBeforeMount, ref, onMounted } from 'vue'
-import { useScoketIo } from '../hooks'
+import { useRouter } from 'vue-router'
+import { useScoketIo, useTime, useHandleRes } from '../hooks'
 import { getHistory, sendMsg, getAvatarList } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
 import { Folder } from '@element-plus/icons-vue'
-import { uploadUrl } from '../configs'
 import 'element-plus/theme-chalk/src/message.scss'
 import { stroageOnlineImage } from '../utils/'
+import MultipleMsgList from './MultipleMsgList.vue'
 const input = ref(null)
 const scrollbarRef = ref(null)
 const ul = ref(null)
 let username = ''
 let isshow = ref(false)
 const socket = useScoketIo()
+const router = useRouter()
+const { handleRes } = useHandleRes()
+const { handleTime, handleAddTime, compareAddTime } = useTime()
 const emits = defineEmits(['addChat'])
 const state = reactive({
   msg: '',
   msgList: [],
   avatarList: [],
 })
+let scro = ref(false)
 let sf = ref()
+let srcList = ref([])
+let latsedTime = ref('')
 //滚动到底部
 const scrollToBottom = () => {
   if (scrollbarRef.value) {
@@ -36,9 +43,20 @@ onBeforeMount(async () => {
   try {
     //获取聊天室历史记录
     let res = await getHistory()
-    state.msgList = res.data.result
+    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    if (res.data.result) {
+      state.msgList = res.data.result
+      let timestr = state.msgList[state.msgList?.length - 1]?.time
+      latsedTime.value = timestr
+      state.msgList.forEach((item) => {
+        item.time = handleTime(item.time)
+      })
+      let scrarr = res.data.result.filter((item) => item.type === 'image')
+      srcList.value = scrarr.map((item) => item.msg)
+    }
     res = await getAvatarList()
-    state.avatarList = res.data.result
+    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    state.avatarList = res.data.result ? res.data.result : null
   } catch (e) {
     console.log(e)
   }
@@ -69,17 +87,22 @@ const handleSendBtnClick = async () => {
   try {
     //聊天内容存储到数据库后，再进行广播
     let res = await sendMsg({ user: username, msg: state.msg })
-    if (res.data.code == 200) {
+    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+
+    if (res.data.result) {
+      let time = res.data.result.time
       socket.emit(
         'chat message',
         JSON.stringify({
           id: new Date().getTime(),
           user: username,
-          dateTime: new Date().getTime(),
+          time: handleAddTime(latsedTime.value, time),
           msg: state.msg,
         })
       )
-
+      if (!compareAddTime(latsedTime.value, time)) {
+        latsedTime.value = time
+      }
       emits('addChat', { msg: state.msg, user: username })
       state.msg = ''
     }
@@ -119,12 +142,7 @@ const handleFileSelect = async (e) => {
     if (file.type.startsWith('image/')) {
       const blob = new Blob([event.target.result])
       const url = URL.createObjectURL(blob)
-      // state.msgList.push({
-      //   id: new Date().getTime(),
-      //   user: username,
-      //   dateTime: new Date().getTime(),
-      //   msg: url,
-      // })
+
       setTimeout(() => {
         scrollToBottom()
       }, 1)
@@ -133,26 +151,35 @@ const handleFileSelect = async (e) => {
 
       formData.append('imageStore', sf.value)
       let res = await stroageOnlineImage({
-        data: { sender: username },
+        data: { sender: username, index: srcList.value.length },
         formData,
       })
-
-      socket.emit('sendImageFile', {
-        user: username,
-        msg: res.data.result,
-        type: file.type,
-      })
+      await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+      if (res.data.result) {
+        let { imageUrl, lastedRow } = res.data.result
+        socket.emit('sendImageFile', {
+          user: username,
+          msg: imageUrl,
+          type: file.type,
+          time: lastedRow.time,
+        })
+      }
     }
   }
 }
-socket.on('handleSendImageFile', ({ user, msg, type }) => {
+socket.on('handleSendImageFile', ({ user, msg, type, time }) => {
   if (type.startsWith('image/')) {
     state.msgList.push({
       id: new Date().getTime(),
       user: user,
-      dateTime: new Date().getTime(),
+      time: handleAddTime(latsedTime.value, time),
       msg,
+      index: srcList.value.length,
     })
+    if (!compareAddTime(latsedTime.value, time)) {
+      latsedTime.value = time
+    }
+    srcList.value.push(msg)
     setTimeout(() => {
       scrollToBottom()
     }, 1)
@@ -174,48 +201,12 @@ const handleSendFile = () => {
     <el-main class="main">
       <el-scrollbar ref="scrollbarRef">
         <ul ref="ul">
-          <li
-            v-for="item in state.msgList"
-            :key="item.id"
-            :class="[item.user == username ? 'msgright' : 'msgleft']"
-          >
-            <div v-if="item.user == username" class="msg msgright">
-              <div class="msgrightbox" style="margin-right: 5px">
-                <span class="textuser" style="text-align: right">{{
-                  item.user
-                }}</span>
-                <span v-if="item.msg.startsWith('http')">
-                  <img :src="item.msg" style="width: 50%; float: right" />
-                </span>
-                <span v-else class="textmsg boxright"> {{ item.msg }}</span>
-              </div>
-              <div class="avatarbox">
-                <el-avatar
-                  shape="square"
-                  fit="fill"
-                  :size="30"
-                  :src="findAvatar(item.user)"
-                />
-              </div>
-            </div>
-            <div v-else class="msg msgleft">
-              <div class="avatarbox">
-                <el-avatar
-                  shape="square"
-                  fit="fill"
-                  :size="30"
-                  :src="findAvatar(item.user)"
-                />
-              </div>
-              <div class="msgrightbox" style="margin-left: 5px">
-                <span class="textuser">{{ item.user }}</span>
-                <span v-if="item.msg.startsWith('http')">
-                  <img :src="item.msg" style="width: 50%" />
-                </span>
-                <span v-else class="textmsg boxleft"> {{ item.msg }}</span>
-              </div>
-            </div>
-          </li>
+          <MultipleMsgList
+            :msgList="state.msgList"
+            :srcList="srcList"
+            :avatarList="state.avatarList"
+            :username="username"
+          />
         </ul>
       </el-scrollbar>
     </el-main>
@@ -230,6 +221,9 @@ const handleSendFile = () => {
           v-model="state.msg"
           ref="input"
           @keyup.enter="handleSendEnterMsg"
+          id="input"
+          name="names"
+          autocomplete="off"
         />
       </el-row>
       <el-row class="btnrow">
@@ -243,7 +237,7 @@ const handleSendFile = () => {
 .el-container {
   border: 1px solid #ccc;
   position: relative;
-  max-width: 550px;
+  width: 500px;
   min-width: 300px;
   background-color: #f4f4f4;
   ul {
@@ -251,7 +245,7 @@ const handleSendFile = () => {
     list-style: none;
     li {
       display: flex;
-      flex-direction: row;
+      flex-direction: column;
     }
   }
   .header {
@@ -321,6 +315,13 @@ input {
   background-color: #64d42c;
   width: fit-content;
   margin-top: 5px;
+}
+.timebox {
+  margin: 0 auto;
+  p {
+    text-align: center;
+    font-size: 12px;
+  }
 }
 .msgleft {
   justify-content: flex-start;

@@ -67,3 +67,24 @@ export const stroageOnlineImage = async ({ data, formData }) => {
     params: data
   })
 }
+//更新用户状态
+export const updateOnlineStatus = async (data) => { return await service({ url: '/user/update/onlineStatus', method: 'post', data }) }
+
+//获取用户状态
+export const getOnlineStatu = async (data) => { return await service({ url: '/user/getOnlineStatu', method: 'post', data }) }
+
+
+//获取是否有重复用户
+export const getRepeatedUser = async (data) => { return await service({ url: '/user/getRepeatedUser', method: 'post', data }) }
+
+//登录
+export const login = async (data) => { return await service({ url: '/user/login', method: 'post', data }) }
+
+//获取好友列表
+export const getFriendList = async (params) => { return await service({ url: '/user/getFriendList', params }) }
+
+//添加好友
+export const addFriend = async (data) => { return await service({ url: '/user/addFriend', method: 'post', data }) }
+
+//更新好友状态
+export const changeStatusAndHandle = async (data) => { return await service({ url: '/user/changeStatusAndHandle', method: 'post', data }) }

@@ -1,45 +1,61 @@
 <script setup>
 import { reactive, onBeforeMount, ref, toRef, watch, h, onMounted } from 'vue'
-import { useScoketIo } from '../hooks'
+import { useTime, useHandleRes } from '../hooks'
 import {
   getSingalHistory,
   sendSingalMsg,
-  addUnreadMsg,
   stroageImage,
+  getOnlineStatu,
 } from '../utils/'
-// import Video from '../components/Video.vue'
+import SingalMsgList from './SingalMsgList.vue'
+import Peer from 'peerjs'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
 import { useRouter } from 'vue-router'
 import { VideoCamera, Folder } from '@element-plus/icons-vue'
 import { uploadUrl } from '../configs'
-// import msgRight from './msgRight.jsx'
-const router = useRouter()
-const props = defineProps(['name', 'avatar', 'otheruser'])
 
+const router = useRouter()
+const { handleRes } = useHandleRes()
+const props = defineProps([
+  'name',
+  'avatar',
+  'otheruser',
+  'socket',
+  'otheravatar',
+])
+
+const socket = toRef(props, 'socket')
 const name = toRef(props, 'name')
 const input = ref(null)
 const scrollbarRef = ref(null)
 const ul = ref(null)
+let srcList = ref(null)
 let username = ''
 let isshow = ref(false)
 let videoshow = ref(false)
 let video = ref(false)
 let dialogVisible = ref(false)
+let videoreciever = ref('')
 const emits = defineEmits(['addRecent'])
-const socket = useScoketIo()
+
 const state = reactive({
   msg: '',
   msgList: [],
+  myId: '',
+  peer: {},
 })
+
 const sendVideoDom = ref(null)
 const recieveVideoDom = ref(null)
 let recieveshow = ref(true)
 let tempLocalStream
 let tempRemoteStream
-let receivedFile = ref(null)
+let firstRender = ref(false)
 let sf = ref(null)
+const { handleTime, handleAddTime, compareAddTime } = useTime()
+let latsedTime = ref('')
 const scrollToBottom = () => {
   if (scrollbarRef.value) {
     scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
@@ -48,45 +64,90 @@ const scrollToBottom = () => {
 
 onBeforeMount(async () => {
   username = localStorage.getItem('username')
+
+  firstRender.value = true
   if (!username) {
     router.push('/login')
     return
   }
-  try {
-    let res = await getSingalHistory({ sender: username, reciver: props.name })
-    state.msgList = res.data.result
-  } catch (e) {
-    console.log(e)
+})
+onMounted(() => {
+  const peer = new Peer()
+  peer.on('open', (id) => {
+    state.myId = id
+    state.peer = peer
+  })
+  peer.on('call', (call) => {
+    videoshow.value = true
+    recieveshow.value = false
+    var getUserMedia =
+      navigator.getUserMedia ||
+      navigator.webkitGetUserMedia ||
+      navigator.mozGetUserMedia
+    getUserMedia(
+      { video: true, audio: true },
+      (stream) => {
+        sendVideoDom.value.srcObject = stream
+        tempLocalStream = stream
+        call.answer(stream)
+        call.on('stream', (userVideoStream) => {
+          recieveVideoDom.value.srcObject = userVideoStream
+          tempRemoteStream = userVideoStream
+        })
+      },
+      (err) => {
+        console.log('Error!')
+      }
+    )
+  })
+})
+watch(firstRender, async (n) => {
+  if (n) {
+    let res = await getSingalHistory({
+      sender: username,
+      reciver: name.value,
+    })
+    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    if (res.data.result) {
+      state.msgList = res.data.result
+      let timestr = state.msgList[state.msgList.length - 1]?.time
+      latsedTime.value = timestr
+      state.msgList.forEach((item) => {
+        item.time = handleTime(item.time)
+      })
+      let scrarr = res.data.result.filter((item) => item.type === 'image')
+      srcList.value = scrarr.map((item) => item.msg)
+      setTimeout(() => {
+        scrollToBottom()
+      }, 0)
+    }
   }
-  setTimeout(() => {
-    scrollToBottom()
-  }, 0)
 })
 watch(name, async () => {
   let res = await getSingalHistory({ sender: username, reciver: name.value })
-  state.msgList = res.data.result
-  setTimeout(() => {
-    scrollToBottom()
-  }, 0)
+  await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+  if (res.data.result) {
+    state.msgList = res.data.result
+    let timestr = state.msgList[state.msgList.length - 1]?.time
+    latsedTime.value = timestr
+    let scrarr = res.data.result.filter((item) => item.type === 'image')
+    srcList.value = scrarr.map((item) => item.msg)
+    state.msgList.forEach((item) => {
+      item.time = handleTime(item.time)
+    })
+
+    setTimeout(() => {
+      scrollToBottom()
+    }, 0)
+  }
 })
 const emojiRegex = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g // Emoji 正则表达式
-const rtcConfig = {
-  iceServers: [
-    {
-      urls: ['stun:stun.l.google.com:19302'],
-    },
-  ],
-}
-const localPc = new RTCPeerConnection(rtcConfig)
-const remotePc = new RTCPeerConnection(rtcConfig)
 
 let noti
 
-socket.on('$chatmsg', (msg) => {
+socket.value.on('$chatmsg', (msg) => {
   const _msgData = JSON.parse(msg)
   state.msgList.push(_msgData)
-  // if (_msgData.sender == username && _msgData.reciver == name.value) {
-  // }
 
   setTimeout(() => {
     scrollToBottom()
@@ -105,18 +166,23 @@ const handleSendBtnClick = async () => {
       sender: username,
       reciver: name.value,
     })
+    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    if (res.data.result) {
+      let time = res.data.result.time
 
-    if (res.data.code == 200) {
-      socket.emit(
+      socket.value.emit(
         '$chat',
         JSON.stringify({
           id: new Date().getTime(),
           sender: username,
           reciver: name.value,
-          dateTime: new Date().getTime(),
+          time: handleAddTime(latsedTime.value, time),
           msg: state.msg,
         })
       )
+      if (!compareAddTime(latsedTime.value, time)) {
+        latsedTime.value = time
+      }
       setTimeout(() => {
         scrollToBottom()
       }, 1)
@@ -128,63 +194,12 @@ const handleSendBtnClick = async () => {
     ElMessage.error('发送失败!')
   }
 }
-const onSuccessLocal = async (stream) => {
-  // const videoTracks = stream.getVideoTracks()
-  //console.log('视频设备: ' + videoTracks[0].label)
-  //const audioTracks = stream.getAudioTracks()
-  //console.log('音频设备: ' + audioTracks[0].label)
-  // 播放轨道获取的流
 
-  sendVideoDom.value.srcObject = stream
-  tempLocalStream = stream
-  stream.getTracks().forEach((track) => {
-    localPc.addTrack(track, stream)
-  })
-
-  socket.emit('$videoInvite', { reciver: name.value, sender: username })
-}
-const onError = (error) => console.log(error)
-const sendoffer = async ({ sender, reciver }) => {
-  socket.emit('$accept', { sender, reciver })
-  if (reciver == username) {
-    videoshow.value = true
-    const localStream = navigator.mediaDevices.getUserMedia(constraints)
-
-    localStream
-      .then((stream) => {
-        reciver.value.srcObject = stream
-        tempLocalStream = stream
-        stream.getTracks().forEach((track) => {
-          localPc.addTrack(track, stream)
-        })
-      })
-      .catch((err) => onError(err))
-  }
-  noti.close()
-}
-const createPeerConnection = async ({ localPc, sender, reciver }) => {
-  let offer = await localPc.createOffer()
-  // 保存为本地描述
-  await localPc.setLocalDescription(new RTCSessionDescription(offer))
-
-  // 通过信令服务器发送到对端
-  socket.emit('offer', { offer, sender, reciver })
-}
-socket.on('$handleaccept', async ({ sender, reciver }) => {
-  if (username == sender) {
-    // let offer = await localPc.createOffer()
-    // // 保存为本地描述
-    // await localPc.setLocalDescription(new RTCSessionDescription(offer))
-    // // 通过信令服务器发送到对端
-    // socket.emit('offer', { offer, sender, reciver })
-    createPeerConnection({ localPc, sender, reciver })
-  }
-})
 const confuse = ({ sender, reciver }) => {
-  socket.emit('$confuse', { sender, reciver })
+  socket.value.emit('$confuse', { sender, reciver })
   noti.close()
 }
-socket.on('$handleconfuse', ({ sender, reciver }) => {
+socket.value.on('$handleconfuse', ({ sender, reciver }) => {
   if (sender == username) {
     ElMessage.error('对方已拒绝')
     setTimeout(() => {
@@ -194,6 +209,11 @@ socket.on('$handleconfuse', ({ sender, reciver }) => {
     }, 1500)
   }
 })
+
+/**
+ *弹出视频通知消息框
+ * @param {包含发起者和接收者名称} param0
+ */
 const open3 = ({ sender, reciver }) => {
   noti = ElNotification({
     title: '视频聊天',
@@ -240,77 +260,77 @@ const handlVideoShow = () => {
   dialogVisible.value = true
 }
 
-socket.on('$handleInvite', ({ sender, reciver }) => {
-  if (reciver == username) {
-    open3({ sender, reciver })
-  }
-  // const remoteStream = navigator.mediaDevices.getUserMedia(constraints)
-  // remoteStream.then(onSuccessRemote).catch(onError)
+const callUser = () => {
+  socket.value.emit('$videoInvite', { reciver: name.value, sender: username })
+}
+socket.value.on('$handleInvite', ({ sender, reciver }) => {
+  open3({ sender, reciver })
 })
 
-const constraints = {
-  audio: true,
-  video: true,
+/**
+ *发起视频连接请求
+ * @param {目标peerID} remoteID
+ */
+const videoCall = (remoteID) => {
+  recieveshow.value = false
+  var getUserMedia =
+    navigator.getUserMedia ||
+    navigator.webkitGetUserMedia ||
+    navigator.mozGetUserMedia
+
+  getUserMedia(
+    { video: true, audio: true },
+    (stream) => {
+      sendVideoDom.value.srcObject = stream
+      tempLocalStream = stream
+      const call = state.peer.call(remoteID, stream)
+      call.on('stream', (remoteStream) => {
+        tempRemoteStream = remoteStream
+        recieveVideoDom.value.srcObject = remoteStream
+      })
+    },
+    (err) => {
+      console.log('Error!')
+    }
+  )
 }
+
+const sendoffer = async ({ sender, reciver }) => {
+  socket.value.emit('getRemoteID', { sender, reciver })
+  noti.close()
+}
+
+/**
+ * 发送自身peerID给发起者
+ */
+socket.value.on('getRemoteID', ({ sender, reciver }) => {
+  videoreciever.value = sender
+  socket.value.emit('returnRemoteID', { sender, reciver }, state.myId)
+})
+/**
+ * 接收目的peerID,发起连接
+ */
+socket.value.on('returnRemoteID', (id) => {
+  videoCall(id)
+})
 
 const handleConfirm = async () => {
   dialogVisible.value = false
-  videoshow.value = true // 访问媒体设备
-  const localStream = navigator.mediaDevices.getUserMedia(constraints)
-
-  localStream
-    .then((stream) => onSuccessLocal(stream))
-    .catch((err) => onError(err))
-}
-socket.on('handleoffer', async ({ offer, sender, reciver }) => {
-  if (sender == username && reciver == name.value) {
-    await remotePc.setRemoteDescription(offer)
-    let remoteAnswer = await remotePc.createAnswer()
-    await localPc.setRemoteDescription(remoteAnswer)
-    await remotePc.setLocalDescription(remoteAnswer)
+  let res = await getOnlineStatu({ username: name.value })
+  await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+  if (res.data.result && res.data.result['isOnline'] === 0) {
+    ElMessage.error('对方离线')
+    return
   }
-})
-
-localPc.onicecandidate = async function (event) {
-  // 回调时，将自己candidate发给对方，对方可以直接addIceCandidate(candidate)添加可以获取流
-
-  if (event.candidate) {
-    //await remotePc.addIceCandidate(event.candidate)
-    socket.emit('candidate', {
-      candidate: event.candidate,
-      sender: username,
-      reciver: name.value,
-    })
-  }
+  videoshow.value = true
+  callUser()
 }
 
-socket.on('handleCandidate', async ({ candidate, sender, reciver }) => {
-  await remotePc.addIceCandidate(candidate)
-})
-
-remotePc.ontrack = (e) => {
-  //bobRemoteMediaStream.addTrack(e.track)
-  recieveshow.value = false
-  recieveVideoDom.value.srcObject = e.streams[0]
-  tempRemoteStream = e.streams[0]
-
-  // socket.emit('$track', {
-  //   streams: e.streams[0],
-  //   sender: username,
-  //   reciver: name.value,
-  // })
-  // recieveVideoDom.value.oncanplay = () => {
-  //   recieveVideoDom.value.play()
-  //   console.log(1)
-  // }
-}
-
-function stopMediaTracks(stream) {
-  stream.getTracks().forEach((track) => {
+const stopMediaTracks = (stream) => {
+  stream?.getTracks().forEach((track) => {
     track.stop()
   })
-
-  if (stream.getTracks().length === 0) {
+  if (stream?.getTracks().length === 0) {
     stream.stop()
   }
 }
@@ -319,7 +339,15 @@ const handleCloseVideo = () => {
   stopMediaTracks(tempLocalStream)
   stopMediaTracks(tempRemoteStream)
   recieveshow.value = true
+  socket.value.emit('closeVideo', videoreciever.value || name.value)
 }
+socket.value.on('closeVideo', () => {
+  ElMessage.error('对方已挂断')
+  videoshow.value = false
+  stopMediaTracks(tempLocalStream)
+  stopMediaTracks(tempRemoteStream)
+  recieveshow.value = true
+})
 
 const handleFileSelect = async (e) => {
   const file = e.target.files[0]
@@ -330,54 +358,74 @@ const handleFileSelect = async (e) => {
   reader.onload = async (event) => {
     // 将文件内容转换为二进制数据并发送
     const blob = new Blob([event.target.result], { type: file.type })
-    const data = { file: blob, type: file.type, name: file.name }
+
     if (file.type.startsWith('image/')) {
       const blob = new Blob([event.target.result])
       const url = URL.createObjectURL(blob)
-      state.msgList.push({
-        id: new Date().getTime(),
-        sender: username,
-        reciver: name.value,
-        dateTime: new Date().getTime(),
-        msg: url,
-      })
-      setTimeout(() => {
-        scrollToBottom()
-      }, 1)
+
       emits('addRecent', { name: name.value, username, msg: '[图片]' })
       let formData = new FormData()
 
       formData.append('imageStore', sf.value)
       let res = await stroageImage({
-        data: { sender: username, reciver: name.value },
+        data: {
+          sender: username,
+          reciver: name.value,
+          index: srcList.value.length,
+        },
         formData,
       })
-
-      socket.emit('sendImageFile', {
-        reciver: name.value,
-        sender: username,
-        msg: uploadUrl + file.name,
-        type: file.type,
-      })
+      await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+      if (res.data.result) {
+        let time = res.data.result.time
+        state.msgList.push({
+          id: new Date().getTime(),
+          sender: username,
+          reciver: name.value,
+          time: handleAddTime(latsedTime.value, time),
+          msg: url,
+          index: srcList.value.length,
+        })
+        if (!compareAddTime(latsedTime.value, time)) {
+          latsedTime.value = time
+        }
+        srcList.value.push(url)
+        socket.value.emit('sendImageFile', {
+          reciver: name.value,
+          sender: username,
+          msg: uploadUrl + file.name,
+          type: file.type,
+          time: handleAddTime(latsedTime.value, time),
+        })
+        setTimeout(() => {
+          scrollToBottom()
+        }, 1)
+      }
     }
   }
 }
-socket.on('handleSendImageFile', ({ reciver, sender, msg, type }) => {
-  if (reciver == username) {
-    if (type.startsWith('image/')) {
-      state.msgList.push({
-        id: new Date().getTime(),
-        sender,
-        reciver,
-        dateTime: new Date().getTime(),
-        msg,
-      })
-      setTimeout(() => {
-        scrollToBottom()
-      }, 1)
+socket.value.on(
+  'handleSendImageFile',
+  ({ reciver, sender, msg, type, time }) => {
+    if (reciver === username) {
+      if (type.startsWith('image/')) {
+        state.msgList.push({
+          id: new Date().getTime(),
+          sender,
+          reciver,
+          msg,
+          index: srcList.value.length,
+          time,
+        })
+        srcList.value.push(msg)
+
+        setTimeout(() => {
+          scrollToBottom()
+        }, 1)
+      }
     }
   }
-})
+)
 const handleSendFile = () => {
   const fileInput = document.createElement('input')
   fileInput.type = 'file'
@@ -387,54 +435,21 @@ const handleSendFile = () => {
 </script>
 
 <template>
-  <el-container>
+  <el-container class="con">
     <el-header class="header">
       <p>{{ name }}</p>
     </el-header>
     <el-main class="main">
       <el-scrollbar ref="scrollbarRef">
         <ul ref="ul">
-          <li
-            v-for="item in state.msgList"
-            :key="item.id"
-            :class="[item.sender == username ? 'msgright' : 'msgleft']"
-          >
-            <div v-if="item.sender == username" class="msg msgright">
-              <div class="msgrightbox" style="margin-right: 5px">
-                <span class="textuser" style="text-align: right">{{
-                  item.sender
-                }}</span>
-                <span
-                  v-if="
-                    item.msg.startsWith('blob') || item.msg.startsWith('http')
-                  "
-                >
-                  <img :src="item.msg" style="width: 50%; float: right" />
-                </span>
-                <span v-else class="textmsg boxright"> {{ item.msg }}</span>
-              </div>
-              <div class="avatarbox">
-                <el-avatar shape="square" fit="fill" :size="30" :src="avatar" />
-              </div>
-            </div>
-            <div v-else class="msg msgleft">
-              <div class="avatarbox">
-                <el-avatar
-                  shape="square"
-                  fit="fill"
-                  :size="30"
-                  :src="otheruser.avatar"
-                />
-              </div>
-              <div class="msgrightbox" style="margin-left: 5px">
-                <span class="textuser">{{ name }}</span>
-                <span v-if="item.msg.startsWith('http')">
-                  <img :src="item.msg" style="width: 50%" />
-                </span>
-                <span v-else class="textmsg boxleft"> {{ item.msg }}</span>
-              </div>
-            </div>
-          </li>
+          <SingalMsgList
+            :avatar="avatar"
+            :msgList="state.msgList"
+            :username="username"
+            :srcList="srcList"
+            :otheravatar="otheravatar"
+            :name="name"
+          />
         </ul>
       </el-scrollbar>
     </el-main>
@@ -450,6 +465,9 @@ const handleSendFile = () => {
           v-model="state.msg"
           ref="input"
           @keyup.enter="handleSendEnterMsg"
+          id="input"
+          name="names"
+          autocomplete="off"
         />
       </el-row>
       <el-row class="btnrow">
@@ -469,7 +487,7 @@ const handleSendFile = () => {
     </template>
   </el-dialog>
 
-  <el-dialog v-model="videoshow" width="50%">
+  <el-dialog v-model="videoshow" width="50%" :show-close="false" center>
     <template #default>
       <div class="video-box">
         <div>
@@ -480,13 +498,13 @@ const handleSendFile = () => {
         <div>
           <video id="recive-video" autoplay ref="recieveVideoDom"></video>
           <p class="video-reciver recieving" v-if="recieveshow">正在接通中</p>
-          <p class="video-reciver" v-else>{{ name }}</p>
+          <p class="video-reciver" v-else>{{ videoreciever || name }}</p>
         </div>
       </div>
     </template>
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="handleCloseVideo">取消</el-button>
+        <el-button @click="handleCloseVideo">挂断</el-button>
       </span>
     </template>
   </el-dialog>
@@ -495,15 +513,16 @@ const handleSendFile = () => {
 .el-container {
   border: 1px solid #ccc;
   position: relative;
-  max-width: 550px;
+  width: 500px;
   min-width: 300px;
   background-color: #f4f4f4;
+
   ul {
     padding: 0;
     list-style: none;
     li {
       display: flex;
-      flex-direction: row;
+      flex-direction: column;
     }
   }
   .header {
@@ -531,15 +550,12 @@ const handleSendFile = () => {
     cursor: pointer;
   }
 }
-.el-dialog {
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-}
+
 .video-box {
   width: 100%;
   display: flex;
   flex-direction: row;
+  justify-content: space-around;
 }
 .video {
   font-size: 20px;
@@ -600,6 +616,14 @@ input {
 }
 .msgrightbox {
   float: left;
+}
+
+.timebox {
+  margin: 0 auto;
+  p {
+    text-align: center;
+    font-size: 12px;
+  }
 }
 .boxright {
   background-color: #64d42c;
