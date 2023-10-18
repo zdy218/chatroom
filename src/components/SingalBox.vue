@@ -1,11 +1,12 @@
 <script setup>
 import { reactive, onBeforeMount, ref, toRef, watch, h, onMounted } from 'vue'
-import { useTime, useHandleRes } from '../hooks'
+import { useTime, useHandleRes, useThrottle, useUploadFile } from '../hooks'
 import {
   getSingalHistory,
   sendSingalMsg,
   stroageImage,
   getOnlineStatu,
+  fileUpload,
 } from '../utils/'
 import SingalMsgList from './SingalMsgList.vue'
 import Peer from 'peerjs'
@@ -14,10 +15,13 @@ import Emoji from './emoji.vue'
 import 'element-plus/theme-chalk/src/message.scss'
 import { useRouter } from 'vue-router'
 import { VideoCamera, Folder } from '@element-plus/icons-vue'
-import { uploadUrl } from '../configs'
+import { uploadUrl, fileuploadUrl } from '../configs'
 
 const router = useRouter()
 const { handleRes } = useHandleRes()
+const { throttle } = useThrottle()
+const { start } = useUploadFile()
+const handleResThrottle = throttle(handleRes, 50)
 const props = defineProps([
   'name',
   'avatar',
@@ -56,6 +60,11 @@ let firstRender = ref(false)
 let sf = ref(null)
 const { handleTime, handleAddTime, compareAddTime } = useTime()
 let latsedTime = ref('')
+let fileSuffixList = [
+  'text/plain',
+  'application/pdf',
+  'application/x-zip-compressed',
+]
 const scrollToBottom = () => {
   if (scrollbarRef.value) {
     scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
@@ -107,11 +116,12 @@ watch(firstRender, async (n) => {
       sender: username,
       reciver: name.value,
     })
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handleResThrottle(ElMessage, router, res.data.code, res.data?.msg)
     if (res.data.result) {
       state.msgList = res.data.result
       let timestr = state.msgList[state.msgList.length - 1]?.time
       latsedTime.value = timestr
+
       state.msgList.forEach((item) => {
         item.time = handleTime(item.time)
       })
@@ -125,7 +135,7 @@ watch(firstRender, async (n) => {
 })
 watch(name, async () => {
   let res = await getSingalHistory({ sender: username, reciver: name.value })
-  await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+  handleResThrottle(ElMessage, router, res.data.code, res.data?.msg)
   if (res.data.result) {
     state.msgList = res.data.result
     let timestr = state.msgList[state.msgList.length - 1]?.time
@@ -166,7 +176,7 @@ const handleSendBtnClick = async () => {
       sender: username,
       reciver: name.value,
     })
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handleResThrottle(ElMessage, router, res.data.code, res.data?.msg)
     if (res.data.result) {
       let time = res.data.result.time
 
@@ -178,6 +188,7 @@ const handleSendBtnClick = async () => {
           reciver: name.value,
           time: handleAddTime(latsedTime.value, time),
           msg: state.msg,
+          type: 'text',
         })
       )
       if (!compareAddTime(latsedTime.value, time)) {
@@ -317,7 +328,7 @@ socket.value.on('returnRemoteID', (id) => {
 const handleConfirm = async () => {
   dialogVisible.value = false
   let res = await getOnlineStatu({ username: name.value })
-  await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+  handleResThrottle(ElMessage, router, res.data.code, res.data?.msg)
   if (res.data.result && res.data.result['isOnline'] === 0) {
     ElMessage.error('对方离线')
     return
@@ -352,20 +363,15 @@ socket.value.on('closeVideo', () => {
 const handleFileSelect = async (e) => {
   const file = e.target.files[0]
   sf.value = e.target.files[0]
-  const reader = new FileReader()
-  reader.readAsArrayBuffer(file)
-
-  reader.onload = async (event) => {
-    // 将文件内容转换为二进制数据并发送
-    const blob = new Blob([event.target.result], { type: file.type })
-
-    if (file.type.startsWith('image/')) {
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader()
+    reader.readAsArrayBuffer(file)
+    reader.onload = async (event) => {
+      // 将文件内容转换为二进制数据并发送
       const blob = new Blob([event.target.result])
       const url = URL.createObjectURL(blob)
-
       emits('addRecent', { name: name.value, username, msg: '[图片]' })
       let formData = new FormData()
-
       formData.append('imageStore', sf.value)
       let res = await stroageImage({
         data: {
@@ -375,7 +381,7 @@ const handleFileSelect = async (e) => {
         },
         formData,
       })
-      await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+      handleResThrottle(ElMessage, router, res.data.code, res.data?.msg)
       if (res.data.result) {
         let time = res.data.result.time
         state.msgList.push({
@@ -384,17 +390,18 @@ const handleFileSelect = async (e) => {
           reciver: name.value,
           time: handleAddTime(latsedTime.value, time),
           msg: url,
+          type: 'image',
           index: srcList.value.length,
         })
         if (!compareAddTime(latsedTime.value, time)) {
           latsedTime.value = time
         }
         srcList.value.push(url)
-        socket.value.emit('sendImageFile', {
+        socket.value.emit('sendFile', {
           reciver: name.value,
           sender: username,
           msg: uploadUrl + file.name,
-          type: file.type,
+          type: 'image',
           time: handleAddTime(latsedTime.value, time),
         })
         setTimeout(() => {
@@ -402,13 +409,42 @@ const handleFileSelect = async (e) => {
         }, 1)
       }
     }
+  } else if (fileSuffixList.includes(file.type)) {
+    let res = await start(sf.value, username, name.value, file.type)
+    let { result } = res
+    handleResThrottle(ElMessage, router, res.code, res?.msg)
+
+    state.msgList.push({
+      id: new Date().getTime(),
+      sender: result.sender,
+      reciver: result.reciver,
+      time: handleAddTime(latsedTime.value, result.time),
+      msg: file.name,
+      type: file.type,
+      url: result.url,
+    })
+    if (!compareAddTime(latsedTime.value, result.time)) {
+      latsedTime.value = result.time
+    }
+    socket.value.emit('sendFile', {
+      sender: result.sender,
+      reciver: result.reciver,
+      msg: file.name,
+      type: file.type,
+      time: handleAddTime(latsedTime.value, result.time),
+    })
+    setTimeout(() => {
+      scrollToBottom()
+    }, 1)
+  } else {
+    return ElMessage.error('仅支持图片,文本,PDF,ZIP格式')
   }
 }
 socket.value.on(
-  'handleSendImageFile',
-  ({ reciver, sender, msg, type, time }) => {
+  'handleSendFile',
+  ({ reciver, sender, msg, type, time, url }) => {
     if (reciver === username) {
-      if (type.startsWith('image/')) {
+      if (type.startsWith('image')) {
         state.msgList.push({
           id: new Date().getTime(),
           sender,
@@ -416,9 +452,23 @@ socket.value.on(
           msg,
           index: srcList.value.length,
           time,
+          type,
+          url,
         })
         srcList.value.push(msg)
 
+        setTimeout(() => {
+          scrollToBottom()
+        }, 1)
+      } else {
+        state.msgList.push({
+          id: new Date().getTime(),
+          sender,
+          reciver,
+          msg,
+          time,
+          type,
+        })
         setTimeout(() => {
           scrollToBottom()
         }, 1)

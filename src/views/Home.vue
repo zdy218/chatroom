@@ -15,6 +15,8 @@ import {
   ChatRound,
   ChatLineRound,
   ArrowRight,
+  Plus,
+  SwitchButton,
 } from '@element-plus/icons-vue'
 import {
   searchUser,
@@ -39,12 +41,13 @@ import ChatBox from '../components/ChatBox.vue'
 import SingalBox from '../components/SingalBox.vue'
 import PersonInfo from '../components/personInfo.vue'
 import 'element-plus/theme-chalk/src/message.scss'
-import { useScoketIo, useHandleRes } from '../hooks'
-import { Plus, SwitchButton } from '@element-plus/icons-vue'
+import { useScoketIo, useHandleRes, useThrottle } from '../hooks'
 
 const router = useRouter()
 const socket = useScoketIo()
-const { handleRes } = useHandleRes()
+const { handelRes } = useHandleRes()
+const { throttle } = useThrottle()
+const handelThrottle = throttle(handelRes, 50)
 let menupath = ref('msg')
 let fit = 'space-scale'
 let user = reactive({
@@ -62,6 +65,7 @@ let pathList = reactive({
   list1: [],
 })
 let input3 = ref('')
+
 let isshow = ref(false)
 let otheruser = reactive({
   username: '',
@@ -78,20 +82,22 @@ let friendInfo = reactive({
   avatar: '',
   status: 0,
 })
+let loading = ref(true)
 let unReadFriendNotification = computed(() => {
   return user.friendList.filter(
     (t) => t.handle === 0 && t.sender != user.username
   ).length
 })
+
 onBeforeMount(async () => {
   user.username = localStorage.getItem('username')
   socket.emit('username', user.username)
   let res = await getOnlineStatu({ username: user.username })
-  await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+  handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
   let status = res.data.result ? res.data.result.isOnline : null
   if (status === 0) {
     let res = await updateOnlineStatus({ username: user.username, status: 1 })
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
   }
 
   path.path = localStorage.getItem('path') ? localStorage.getItem('path') : '/'
@@ -102,13 +108,13 @@ onBeforeMount(async () => {
   try {
     //通过当前用户去查询最近聊天
     let res = await getRecentChat({ sender: user.username })
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     if (res.data.result) {
       pathList.list = [{ username: '在线聊天室' }, ...res.data.result]
     }
     //获取自身头像
     res = await getSelfAvatar({ username: user.username })
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     user.avatar = res.data.result ? res.data.result[0].avatar : null
     if (path.path != '/') {
       otheruser = pathList.list.find((t) => {
@@ -119,7 +125,7 @@ onBeforeMount(async () => {
     }
     //获取用户头像
     res = await getAvatarList()
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     if (res.data.result) {
       user.avatarlist = res.data.result
       if (path.path != '/') {
@@ -131,9 +137,9 @@ onBeforeMount(async () => {
 
     //获取所有未读聊天信息数目
     res = await getAllUnreadMsg({ username: user.username })
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     if (res.data.result) {
-      let { result } = res.data
+      let result = res.data.result
       pathList.list.forEach((item) => {
         result.forEach((obj) => {
           if (item.username == obj.sender) {
@@ -154,7 +160,7 @@ onBeforeMount(async () => {
     let arr = pathList.list.map((item) => item.username).splice(1)
     arr.forEach(async (t) => {
       res = await getLastedMsg({ arr: [t, user.username] })
-      await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+      handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
       let row = res.data.result ? res.data.result.rows[0] : null
       pathList.list.find(
         (item) => item.username == row.sender || item.username == row.reciver
@@ -163,22 +169,19 @@ onBeforeMount(async () => {
 
     //获取聊天室最近一条消息
     res = await getOnlineLastedMsg()
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     lastedMsg.user = res.data.result ? res.data.result.rows[0].user : null
     lastedMsg.msg = res.data.result
       ? res.data.result.rows[0].msg.startsWith('http')
         ? '[图片]'
         : res.data.result.rows[0].msg
       : null
-
     res = await getFriendList({ username: user.username })
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     if (res.data.result && res.data.result.length > 0) {
       user.friendList = res.data.result
-      // friendInfo.username = res.data.result[0].friendname
-      // friendInfo.avatar = findAvatar(res.data.result[0].friendname)
-      // friendInfo.status = res.data.result[0].status
     }
+    loading.value = false
   } catch (e) {
     console.log(e)
   }
@@ -220,7 +223,7 @@ const handleSearch = async () => {
   }
   try {
     let res = await searchUser({ username: input3.value })
-    handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     pathList.searchList = res.data.result ? res.data.result : null
     isshow.value = true
   } catch (err) {
@@ -228,7 +231,7 @@ const handleSearch = async () => {
     console.log(err)
   }
 }
-const handleAddFriend = (name = '') => {
+const handleAddFriend = async (name = '') => {
   isshow.value = false
   input3.value = ''
   if (
@@ -241,7 +244,8 @@ const handleAddFriend = (name = '') => {
     let { avatar } = user.avatarlist.find((t) => t.username == name)
     pathList.list.push({ username: name, avatar })
   }
-  addRecentChat({ username: name, sender: user.username })
+  let res = await addRecentChat({ username, sender: user.username })
+  handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
 }
 const handleAdd = (name = '') => {
   isshow.value = false
@@ -266,15 +270,18 @@ socket.on('$addchat', async ({ name, username, msg }) => {
     [name, username].includes(item.username)
   ).recentMsg = msg
   if (path.path == username) {
-    readMsg({ sender: username, username: name })
+    let res = await readMsg({ sender: username, username: name })
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     return
   }
-  if (name == user.username) {
+  if (name === user.username) {
     let res = await updateUnreadMsgNum({ sender: username, username: name })
-    handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     const obj = res.data.result ? res.data.result[0] : null
-    pathList.list.find((item) => item.username == obj.sender).badge =
-      obj.unreadnum
+    if (obj) {
+      pathList.list.find((item) => item.username == obj.sender).badge =
+        obj.unreadnum
+    }
   }
 })
 const handleAddRecentChat = ({ name, username, msg }) => {
@@ -322,16 +329,22 @@ const logout = async () => {
   router.push('/login')
 }
 
-const handleSendFriendMsg = (username) => {
+const handleSendFriendMsg = async (username) => {
   menupath.value = 'msg'
   if (!pathList.list.find((t) => t.username === username)) {
-    pathList.list.push({ username: name, avatar: findAvatar(username) })
+    pathList.list.push({
+      username: username,
+      avatar: findAvatar(username),
+      recentMsg: '',
+    })
   }
+  let res = await addRecentChat({ username, sender: user.username })
+  handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
   if (path.path === username) {
     return
   } else {
+    localStorage.setItem('path', username)
     path.path = username
-    localStorage.setItem('username', username)
   }
 }
 const changeToFriend = () => {
@@ -345,10 +358,10 @@ const changeToFriend = () => {
 }
 const handleAddToFriend = async (username) => {
   let res = await addFriend({ username: user.username, friendname: username })
-  await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+  handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
   if (res.data.result) {
     let res = await getFriendList({ username: user.username })
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
     if (res.data.result && res.data.result.length > 0) {
       user.friendList = res.data.result
       friendInfo.username = res.data.result[0].friendname
@@ -359,10 +372,9 @@ const handleAddToFriend = async (username) => {
   }
 }
 socket.on('handleAddToFriend', async ({ username }) => {
-  console.log(1)
   ElMessage.info('你收到一条好友申请')
   let res = await getFriendList({ username })
-  await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+  handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
   if (res.data.result && res.data.result.length > 0) {
     user.friendList = res.data.result
     friendInfo.username = res.data.result[0].friendname
@@ -372,7 +384,7 @@ socket.on('handleAddToFriend', async ({ username }) => {
 })
 const handleConfuse = async (username, sender) => {
   let res = await changeStatusAndHandle({ username, sender, status: -1 })
-  await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+  handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
   if (res.data.code === 200) {
     user.friendList.find(
       (t) => t.username === username && t.sender === sender
@@ -387,7 +399,7 @@ const handleConfuse = async (username, sender) => {
 
 const handleAgree = async (username, sender) => {
   let res = await changeStatusAndHandle({ username, sender, status: 1 })
-  await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+  handelThrottle(ElMessage, router, res.data.code, res.data?.msg)
   if (res.data.code === 200) {
     user.friendList.find(
       (t) => t.username === username && t.sender === sender
@@ -424,304 +436,338 @@ socket.on('handleAdd', ({ username, sender, status }) => {
 </script>
 
 <template>
-  <div class="menu">
-    <div class="user">
-      <div class="block">
-        <el-upload
-          class="avatar-uploader"
-          name="avatar"
-          action="http://127.0.0.1:3000/user/update/avatar"
-          :data="{ username: user.username }"
-          :show-file-list="false"
-          :on-success="handleAvatarSuccess"
-          :before-upload="beforeAvatarUpload"
+  <el-skeleton
+    style="width: 805px; height: 400px; background-color: white"
+    :loading="loading"
+    animated
+    :throttle="800"
+  >
+    <template #template>
+      <el-skeleton-item variant="rect" style="width: 805px; height: 240px" />
+      <div style="padding: 14px">
+        <el-skeleton-item variant="h3" style="width: 50%" />
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-items: space-between;
+            margin-top: 16px;
+            height: 16px;
+          "
         >
-          <el-avatar
-            v-if="user.avatar"
-            shape="square"
-            :fit="fit"
-            :size="40"
-            :src="user.avatar"
-          />
-          <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
-        </el-upload>
-
-        <p style="cursor: pointer">
-          {{ user.username }}
-        </p>
+          <el-skeleton-item variant="text" style="margin-right: 16px" />
+          <el-skeleton-item variant="text" style="width: 30%" />
+        </div>
       </div>
-      <div class="msglist">
-        <el-icon v-if="menupath === 'msg'" color="white" size="25"
-          ><ChatLineRound
-        /></el-icon>
-        <el-icon v-else color="white" size="25" @click="menupath = 'msg'"
-          ><ChatRound
-        /></el-icon>
-      </div>
-
-      <div class="friend">
-        <el-icon v-if="menupath === 'friend'" color="white" size="25"
-          ><UserFilled
-        /></el-icon>
-        <el-icon v-else color="white" size="25" @click="changeToFriend"
-          ><User
-        /></el-icon>
-      </div>
-      <div class="logout" @click="logout">
-        <el-icon color="white">
-          <SwitchButton />
-        </el-icon>
-        <p style="color: white">退出</p>
-      </div>
-    </div>
-    <div class="middle" v-if="menupath === 'msg'">
-      <div class="searchbox">
-        <el-input
-          v-model="input3"
-          placeholder="请搜索用户"
-          class="input-with-select"
-        >
-          <template #append>
-            <el-button :icon="Search" @click="handleSearch" />
-          </template>
-        </el-input>
-        <Transition name="search">
-          <div class="searchresult" v-if="isshow">
-            <el-scrollbar>
-              <p
-                v-if="pathList.searchList.length > 0"
-                v-for="(item, index) in pathList.searchList"
-                :key="index"
-                @click="handleAddFriend(item)"
-                class="searchitem"
-              >
-                <el-avatar
-                  shape="square"
-                  :fit="fit"
-                  :size="40"
-                  :src="findAvatar(item)"
-                />
-                <span>{{ item }}</span>
-              </p>
-              <p class="noresult" v-else @click="handleAddFriend()">
-                暂无该用户
-              </p>
-            </el-scrollbar>
-          </div>
-        </Transition>
-      </div>
-      <div class="ul">
-        <el-menu
-          :default-active="path.path"
-          class="el-menu-vertical-demo"
-          @select="changePath"
-          active-text-color="#ffd04b"
-          text-color="black"
-        >
-          <el-menu-item
-            :index="item.username == '在线聊天室' ? '/' : item.username"
-            v-for="(item, index) in pathList.list"
-            :key="index"
-            :class="[
-              item.username == path.path ||
-              (path.path == '/' && item.username == '在线聊天室')
-                ? 'active-menu'
-                : '',
-            ]"
-          >
-            <el-avatar
-              v-if="item.username != '在线聊天室'"
-              shape="square"
-              :fit="fit"
-              :size="40"
-              :src="item.avatar"
-            />
-            <div>
-              <p style="margin-left: 3px" class="centerbox">
-                {{ item.username }}
-              </p>
-              <p
-                v-if="item.username != '在线聊天室'"
-                style="margin-top: 5px; margin-left: 3px"
-              >
-                {{ item.recentMsg }}
-              </p>
-              <p v-else style="margin-top: 5px; margin-left: 3px">
-                {{ lastedMsg.user }}:{{ lastedMsg.msg }}
-              </p>
-            </div>
-
-            <p v-show="item.badge" class="badge">
-              {{ item.badge }}
-            </p>
-          </el-menu-item>
-        </el-menu>
-      </div>
-    </div>
-
-    <div class="middle" v-else-if="menupath === 'friend'">
-      <div class="searchbox">
-        <el-input
-          v-model="input3"
-          placeholder="请搜索用户"
-          class="input-with-select"
-        >
-          <template #append>
-            <el-button :icon="Search" @click="handleSearch" />
-          </template>
-        </el-input>
-        <Transition name="search">
-          <div class="searchresult" v-if="isshow">
-            <el-scrollbar>
-              <p
-                v-if="pathList.searchList.length > 0"
-                v-for="(item, index) in pathList.searchList"
-                :key="index"
-                @click="handleAdd(item)"
-                class="searchitem"
-              >
-                <el-avatar
-                  shape="square"
-                  :fit="fit"
-                  :size="40"
-                  :src="findAvatar(item)"
-                />
-                <span>{{ item }}</span>
-              </p>
-              <p class="noresult" v-else>暂无该用户</p>
-            </el-scrollbar>
-          </div>
-        </Transition>
-      </div>
-      <div class="friendul">
-        <el-popover
-          placement="right"
-          title="好友申请"
-          :width="210"
-          trigger="hover"
-        >
-          <template #reference>
-            <div class="noti">
-              <el-badge
-                :value="unReadFriendNotification"
-                class="item"
-                :hidden="!unReadFriendNotification"
-              >
-                <p>通知</p>
-              </el-badge>
-              <el-icon><ArrowRight /></el-icon>
-            </div>
-          </template>
-          <template #default>
-            <div>
-              <p
-                v-for="(item, index) in user.friendList"
-                :key="item.id"
-                class="notification"
-              >
-                {{ item.friendname }}
-                <el-button
-                  disabled
-                  v-if="item.status != 0 && item.handle === 1"
-                >
-                  {{ item.status === 1 ? '已同意' : '已拒绝' }}
-                </el-button>
-                <el-button
-                  v-if="
-                    item.status === 0 &&
-                    item.handle === 0 &&
-                    item.sender != user.username
-                  "
-                  type="danger"
-                  @click="handleConfuse(user.username, item.sender)"
-                  >拒绝
-                </el-button>
-                <el-button
-                  v-if="
-                    item.status === 0 &&
-                    item.handle === 0 &&
-                    item.sender != user.username
-                  "
-                  type="success"
-                  @click="handleAgree(user.username, item.sender)"
-                  >同意
-                </el-button>
-                <el-button
-                  v-if="
-                    item.status === 0 &&
-                    item.handle === 0 &&
-                    item.sender === user.username
-                  "
-                  disabled
-                  >待通过
-                </el-button>
-              </p>
-            </div>
-          </template>
-        </el-popover>
-        <p style="text-align: center">好友列表</p>
-        <el-scrollbar>
-          <el-menu
-            class="el-menu-vertical-demo"
-            active-color="#000"
-            text-color="black"
-            :default-active="friendIndex + ''"
-          >
-            <el-menu-item
-              v-for="(item, index) in user.friendList"
-              :key="index"
-              :index="index + ''"
-              v-show="item.status"
-              @click="changeMenuItem(item.friendname)"
+    </template>
+    <template #default>
+      <div class="menu">
+        <div class="user">
+          <div class="block">
+            <el-upload
+              class="avatar-uploader"
+              name="avatar"
+              action="http://127.0.0.1:3000/user/update/avatar"
+              :data="{ username: user.username }"
+              :show-file-list="false"
+              :on-success="handleAvatarSuccess"
+              :before-upload="beforeAvatarUpload"
             >
               <el-avatar
+                v-if="user.avatar"
                 shape="square"
                 :fit="fit"
                 :size="40"
-                :src="findAvatar(item.friendname)"
+                :src="user.avatar"
               />
-              <div>
-                <p style="margin-left: 5px; color: black">
-                  {{ item.friendname }}
-                </p>
+              <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
+            </el-upload>
+
+            <p style="cursor: pointer">
+              {{ user.username }}
+            </p>
+          </div>
+          <div class="msglist">
+            <el-icon v-if="menupath === 'msg'" color="white" size="25"
+              ><ChatLineRound
+            /></el-icon>
+            <el-icon v-else color="white" size="25" @click="menupath = 'msg'"
+              ><ChatRound
+            /></el-icon>
+          </div>
+
+          <div class="friend">
+            <el-icon v-if="menupath === 'friend'" color="white" size="25"
+              ><UserFilled
+            /></el-icon>
+            <el-icon v-else color="white" size="25" @click="changeToFriend"
+              ><User
+            /></el-icon>
+          </div>
+          <div class="logout" @click="logout">
+            <el-icon color="white">
+              <SwitchButton />
+            </el-icon>
+            <p style="color: white">退出</p>
+          </div>
+        </div>
+        <div class="middle" v-if="menupath === 'msg'">
+          <div class="searchbox">
+            <el-input
+              v-model="input3"
+              placeholder="请搜索用户"
+              class="input-with-select"
+            >
+              <template #append>
+                <el-button :icon="Search" @click="handleSearch" />
+              </template>
+            </el-input>
+            <Transition name="search">
+              <div class="searchresult" v-if="isshow">
+                <el-scrollbar>
+                  <p
+                    v-show="pathList.searchList.length > 0"
+                    v-for="(item, index) in pathList.searchList"
+                    :key="index"
+                    @click="handleAddFriend(item)"
+                    class="searchitem"
+                  >
+                    <el-avatar
+                      shape="square"
+                      :fit="fit"
+                      :size="40"
+                      :src="findAvatar(item)"
+                    />
+                    <span>{{ item }}</span>
+                  </p>
+                  <p
+                    class="noresult"
+                    v-show="pathList.searchList.length === 0"
+                    @click="handleAddFriend()"
+                  >
+                    暂无该用户
+                  </p>
+                </el-scrollbar>
               </div>
-            </el-menu-item>
-          </el-menu>
-        </el-scrollbar>
-      </div>
-    </div>
-    <div class="aside" v-if="menupath === 'msg'">
-      <ChatBox v-if="path.path === '/'" @addChat="handleAddChat" />
-      <SingalBox
-        v-else
-        :name="path.path"
-        @addRecent="handleAddRecentChat"
-        :avatar="user.avatar"
-        :otheravatar="otheravatar"
-        :otheruser="otheruser"
-        :socket="socket"
-      />
-    </div>
-    <el-container
-      class="infoBox"
-      v-else
-      style="
-        width: 500px;
-        min-width: 300px;
-        background-color: white;
-        height: 472px;
-      "
-    >
-      <PersonInfo
-        :username="friendInfo.username"
-        :avatar="friendInfo.avatar"
-        :status="friendInfo.status"
-        :friendList="user.friendList"
-        @send="handleSendFriendMsg"
-        @addFriend="handleAddToFriend"
-      />
-    </el-container>
-  </div>
+            </Transition>
+          </div>
+          <div class="ul">
+            <el-menu
+              :default-active="path.path"
+              class="el-menu-vertical-demo"
+              @select="changePath"
+              active-text-color="#ffd04b"
+              text-color="black"
+            >
+              <el-menu-item
+                :index="item.username == '在线聊天室' ? '/' : item.username"
+                v-for="(item, index) in pathList.list"
+                :key="index"
+                :class="[
+                  item.username == path.path ||
+                  (path.path == '/' && item.username == '在线聊天室')
+                    ? 'active-menu'
+                    : '',
+                ]"
+              >
+                <el-avatar
+                  v-if="item.username != '在线聊天室'"
+                  shape="square"
+                  :fit="fit"
+                  :size="40"
+                  :src="item.avatar"
+                />
+                <div>
+                  <p style="margin-left: 3px" class="centerbox">
+                    {{ item.username }}
+                  </p>
+                  <p
+                    v-if="item.username != '在线聊天室'"
+                    style="margin-top: 5px; margin-left: 3px"
+                  >
+                    <el-text truncated>{{ item.recentMsg }}</el-text>
+                  </p>
+                  <p v-else style="margin-top: 5px; margin-left: 3px">
+                    {{ lastedMsg.user }}:<el-text truncated>{{
+                      lastedMsg.msg
+                    }}</el-text>
+                  </p>
+                </div>
+
+                <p v-show="item.badge" class="badge">
+                  {{ item.badge }}
+                </p>
+              </el-menu-item>
+            </el-menu>
+          </div>
+        </div>
+
+        <div class="middle" v-else-if="menupath === 'friend'">
+          <div class="searchbox">
+            <el-input
+              v-model="input3"
+              placeholder="请搜索用户"
+              class="input-with-select"
+            >
+              <template #append>
+                <el-button :icon="Search" @click="handleSearch" />
+              </template>
+            </el-input>
+            <Transition name="search">
+              <div class="searchresult" v-if="isshow">
+                <el-scrollbar>
+                  <p
+                    v-show="pathList.searchList.length > 0"
+                    v-for="(item, index) in pathList.searchList"
+                    :key="index"
+                    @click="handleAdd(item)"
+                    class="searchitem"
+                  >
+                    <el-avatar
+                      shape="square"
+                      :fit="fit"
+                      :size="40"
+                      :src="findAvatar(item)"
+                    />
+                    <span>{{ item }}</span>
+                  </p>
+                  <p class="noresult" v-show="pathList.searchList.length === 0">
+                    暂无该用户
+                  </p>
+                </el-scrollbar>
+              </div>
+            </Transition>
+          </div>
+          <div class="friendul">
+            <el-popover
+              placement="right"
+              title="好友申请"
+              :width="210"
+              trigger="hover"
+            >
+              <template #reference>
+                <div class="noti">
+                  <el-badge
+                    :value="unReadFriendNotification"
+                    class="item"
+                    :hidden="!unReadFriendNotification"
+                  >
+                    <p>通知</p>
+                  </el-badge>
+                  <el-icon><ArrowRight /></el-icon>
+                </div>
+              </template>
+              <template #default>
+                <div>
+                  <p
+                    v-for="item in user.friendList"
+                    :key="item.id"
+                    class="notification"
+                  >
+                    {{ item.friendname }}
+                    <el-button
+                      disabled
+                      v-if="item.status != 0 && item.handle === 1"
+                    >
+                      {{ item.status === 1 ? '已同意' : '已拒绝' }}
+                    </el-button>
+                    <el-button
+                      v-if="
+                        item.status === 0 &&
+                        item.handle === 0 &&
+                        item.sender != user.username
+                      "
+                      type="danger"
+                      @click="handleConfuse(user.username, item.sender)"
+                      >拒绝
+                    </el-button>
+                    <el-button
+                      v-if="
+                        item.status === 0 &&
+                        item.handle === 0 &&
+                        item.sender != user.username
+                      "
+                      type="success"
+                      @click="handleAgree(user.username, item.sender)"
+                      >同意
+                    </el-button>
+                    <el-button
+                      v-if="
+                        item.status === 0 &&
+                        item.handle === 0 &&
+                        item.sender === user.username
+                      "
+                      disabled
+                      >待通过
+                    </el-button>
+                  </p>
+                </div>
+              </template>
+            </el-popover>
+            <p style="text-align: center">好友列表</p>
+            <el-scrollbar>
+              <el-menu
+                class="el-menu-vertical-demo"
+                active-color="#000"
+                text-color="black"
+                :default-active="friendIndex + ''"
+              >
+                <el-menu-item
+                  v-for="(item, index) in user.friendList"
+                  :key="index"
+                  :index="index + ''"
+                  v-show="item.status"
+                  @click="changeMenuItem(item.friendname)"
+                >
+                  <el-avatar
+                    shape="square"
+                    :fit="fit"
+                    :size="40"
+                    :src="findAvatar(item.friendname)"
+                  />
+                  <div>
+                    <p style="margin-left: 5px; color: black">
+                      {{ item.friendname }}
+                    </p>
+                  </div>
+                </el-menu-item>
+              </el-menu>
+            </el-scrollbar>
+          </div>
+        </div>
+        <div class="aside" v-if="menupath === 'msg'">
+          <ChatBox v-if="path.path === '/'" @addChat="handleAddChat" />
+          <SingalBox
+            v-else
+            :name="path.path"
+            @addRecent="handleAddRecentChat"
+            :avatar="user.avatar"
+            :otheravatar="otheravatar"
+            :otheruser="otheruser"
+            :socket="socket"
+          />
+        </div>
+        <el-container
+          class="infoBox"
+          v-else
+          style="
+            width: 500px;
+            min-width: 300px;
+            background-color: white;
+            height: 472px;
+          "
+        >
+          <PersonInfo
+            :username="friendInfo.username"
+            :avatar="friendInfo.avatar"
+            :status="friendInfo.status"
+            :friendList="user.friendList"
+            @send="handleSendFriendMsg"
+            @addFriend="handleAddToFriend"
+          />
+        </el-container></div
+    ></template>
+  </el-skeleton>
 </template>
 <style lang="scss" scoped>
 .menu {
@@ -748,6 +794,10 @@ socket.on('handleAdd', ({ username, sender, status }) => {
     height: 89%;
     .el-menu {
       background-color: #e6e6e6;
+    }
+    .el-text {
+      width: 90px;
+      color: black;
     }
   }
   .friendul {

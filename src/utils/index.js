@@ -88,3 +88,12 @@ export const addFriend = async (data) => { return await service({ url: '/user/ad
 
 //更新好友状态
 export const changeStatusAndHandle = async (data) => { return await service({ url: '/user/changeStatusAndHandle', method: 'post', data }) }
+
+
+//发送文件
+export const fileUpload = async ({ formData, data }) => {
+
+  return await service({
+    url: '/singalroom/uploadfile', method: 'post', data: formData, params: data
+  })
+}

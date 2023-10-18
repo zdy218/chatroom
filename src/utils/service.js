@@ -1,7 +1,4 @@
 import axios from "axios"
-
-
-
 const service = axios.create({
   baseURL: "http://127.0.0.1:3000",
   timeout: 8000,
@@ -17,10 +14,6 @@ service.interceptors.request.use((config) => {
 })
 
 service.interceptors.response.use((res) => {
-  let data = res.data
-  if (data.msg) {
-    console.log(data.msg)
-  }
   return res
 
 }, (err) => {

@@ -1,7 +1,13 @@
 <script setup>
 import { reactive, onBeforeMount, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useScoketIo, useTime, useHandleRes } from '../hooks'
+import {
+  useScoketIo,
+  useTime,
+  useHandleRes,
+  useThrottle,
+  useUploadFile,
+} from '../hooks'
 import { getHistory, sendMsg, getAvatarList } from '../utils/'
 import { ElMessage } from 'element-plus'
 import Emoji from './emoji.vue'
@@ -17,6 +23,9 @@ let isshow = ref(false)
 const socket = useScoketIo()
 const router = useRouter()
 const { handleRes } = useHandleRes()
+const { throttle } = useThrottle()
+const { start } = useUploadFile()
+const handleResThrottle = throttle(handleRes, 50)
 const { handleTime, handleAddTime, compareAddTime } = useTime()
 const emits = defineEmits(['addChat'])
 const state = reactive({
@@ -34,6 +43,11 @@ const scrollToBottom = () => {
     scrollbarRef.value.setScrollTop(ul.value.scrollHeight)
   }
 }
+let fileSuffixList = [
+  'text/plain',
+  'application/pdf',
+  'application/x-zip-compressed',
+]
 onBeforeMount(async () => {
   username = localStorage.getItem('username')
   if (!username) {
@@ -43,7 +57,7 @@ onBeforeMount(async () => {
   try {
     //获取聊天室历史记录
     let res = await getHistory()
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handleResThrottle(ElMessage, router, res.data.code, res.data?.msg)
     if (res.data.result) {
       state.msgList = res.data.result
       let timestr = state.msgList[state.msgList?.length - 1]?.time
@@ -55,7 +69,7 @@ onBeforeMount(async () => {
       srcList.value = scrarr.map((item) => item.msg)
     }
     res = await getAvatarList()
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handleResThrottle(ElMessage, router, res.data.code, res.data?.msg)
     state.avatarList = res.data.result ? res.data.result : null
   } catch (e) {
     console.log(e)
@@ -87,10 +101,11 @@ const handleSendBtnClick = async () => {
   try {
     //聊天内容存储到数据库后，再进行广播
     let res = await sendMsg({ user: username, msg: state.msg })
-    await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+    handleResThrottle(ElMessage, router, res.data.code, res.data?.msg)
 
     if (res.data.result) {
       let time = res.data.result.time
+
       socket.emit(
         'chat message',
         JSON.stringify({
@@ -98,6 +113,7 @@ const handleSendBtnClick = async () => {
           user: username,
           time: handleAddTime(latsedTime.value, time),
           msg: state.msg,
+          type: 'text',
         })
       )
       if (!compareAddTime(latsedTime.value, time)) {
@@ -132,17 +148,15 @@ const findAvatar = (item) => {
 const handleFileSelect = async (e) => {
   const file = e.target.files[0]
   sf.value = e.target.files[0]
-  const reader = new FileReader()
-  reader.readAsArrayBuffer(file)
-
-  reader.onload = async (event) => {
-    // 将文件内容转换为二进制数据并发送
-    const blob = new Blob([event.target.result], { type: file.type })
-    const data = { file: blob, type: file.type, name: file.name }
-    if (file.type.startsWith('image/')) {
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader()
+    reader.readAsArrayBuffer(file)
+    reader.onload = async (event) => {
+      // 将文件内容转换为二进制数据并发送
       const blob = new Blob([event.target.result])
-      const url = URL.createObjectURL(blob)
+      const data = { file: blob, type: file.type, name: file.name }
 
+      const url = URL.createObjectURL(blob)
       setTimeout(() => {
         scrollToBottom()
       }, 1)
@@ -154,32 +168,64 @@ const handleFileSelect = async (e) => {
         data: { sender: username, index: srcList.value.length },
         formData,
       })
-      await handleRes(ElMessage, router, res.data.code, res.data?.msg)
+      handleResThrottle(ElMessage, router, res.data.code, res.data?.msg)
       if (res.data.result) {
         let { imageUrl, lastedRow } = res.data.result
-        socket.emit('sendImageFile', {
+        socket.emit('sendOnlineFile', {
           user: username,
           msg: imageUrl,
-          type: file.type,
+          type: 'image',
           time: lastedRow.time,
         })
       }
     }
+  } else if (fileSuffixList.includes(file.type)) {
+    let res = await start(sf.value, username, '', file.type)
+    let { result } = res
+    handleResThrottle(ElMessage, router, res.code, res?.msg)
+
+    socket.emit('sendOnlineFile', {
+      user: username,
+      msg: file.name,
+      type: file.type,
+      time: result.time,
+    })
+    setTimeout(() => {
+      scrollToBottom()
+    }, 1)
+  } else {
+    return ElMessage.error('仅支持图片,文本,PDF,ZIP格式')
   }
 }
-socket.on('handleSendImageFile', ({ user, msg, type, time }) => {
-  if (type.startsWith('image/')) {
+socket.on('sendOnlineFile', ({ user, msg, type, time }) => {
+  if (type.startsWith('image')) {
     state.msgList.push({
       id: new Date().getTime(),
       user: user,
       time: handleAddTime(latsedTime.value, time),
       msg,
+      type: 'image',
       index: srcList.value.length,
     })
     if (!compareAddTime(latsedTime.value, time)) {
       latsedTime.value = time
     }
     srcList.value.push(msg)
+    setTimeout(() => {
+      scrollToBottom()
+    }, 1)
+  } else {
+    state.msgList.push({
+      id: new Date().getTime(),
+      user,
+      msg,
+      time: handleAddTime(latsedTime.value, time),
+      type,
+    })
+    if (!compareAddTime(latsedTime.value, time)) {
+      latsedTime.value = time
+    }
+    emits('addChat', { msg, user })
     setTimeout(() => {
       scrollToBottom()
     }, 1)
